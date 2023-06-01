@@ -1,0 +1,12 @@
+_[^_]*
+.nfs*
+*.py[cod]
+__pycache__
+*.log*
+*.txt
+*.pdf
+*.png
+*.fits
+*.h5
+
+
