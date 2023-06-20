@@ -10,13 +10,8 @@ import numpy as np
 
 def get_lct_map(patch1, patch2, patch_size, gkern):
 
-	#gauss1 = makeGaussian(g_size, fwhm = fwhm)
-	
-	#print(cube.shape)
-	#patch1 = cube[i, y_cent - patch_size//2:y_cent+patch_size//2, x_cent-patch_size//2:x_cent+patch_size//2]
-	#patch2 = cube[i+1, y_cent - patch_size//2:y_cent+patch_size//2, x_cent-patch_size//2:x_cent+patch_size//2]
-	patch1 = gkern*(patch1 - np.mean(patch1))
-	patch2 = gkern*(patch2 - np.mean(patch2))
+	patch1 = gkern*(patch1 - np.nanmean(patch1))
+	patch2 = gkern*(patch2 - np.nanmean(patch2))
 	f = np.fft.rfft2(patch1)
 	g = np.fft.rfft2(patch2)
 	c = np.conj(f)*g

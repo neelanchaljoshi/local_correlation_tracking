@@ -75,6 +75,10 @@ cfg = configparser.ConfigParser()
 cfg.read(cfgfile)
 
 # === config: main ===
+Ntry = cfg.getint('main', 'Ntry')
+NX = cfg.getint('main', 'NX')
+NY = cfg.getint('main', 'NY')
+
 date_fmt = cfg.get('main', 'date_fmt')
 ystart = cfg.getint('main', 'yr_start')
 ystop = cfg.getint('main', 'yr_stop')
