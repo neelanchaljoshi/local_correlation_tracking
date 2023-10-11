@@ -6,6 +6,7 @@
 Welcome to LCT's documentation!
 ===============================
 
+**Local Correlation Tracking (LCT)** is a parallelized python code to track features on the surface of the sun using SDO/HMI Data. 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
