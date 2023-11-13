@@ -10,9 +10,9 @@ import numpy as np
 from scipy.ndimage.interpolation import shift
 from scipy.linalg import lstsq
 
-
-def get_ux_uy(ccf_av, grid_len = 5, patch_size = 168, pixel_size = 0.03, R_sun = 696, ntry = 3):
+def get_ux_uy_ellipsoid(ccf_av, grid_len = 5, patch_size = 168, pixel_size = 0.03, R_sun = 696, ntry = 3, cadence = 45):
 	# Finds the ux and uy from the ccf_av
+	# Cadence always in seconds
 	dx_tot = 0
 	dy_tot = 0
 
@@ -47,3 +47,9 @@ def get_ux_uy(ccf_av, grid_len = 5, patch_size = 168, pixel_size = 0.03, R_sun =
 
 		dx_tot = dx_tot + del_x
 		dy_tot = dy_tot + del_y
+
+	#Calculate ux, uy
+	ux = R_sun * dx_tot * np.deg2rad(pixel_size)/(cadence) * 1e6
+	uy = R_sun * dy_tot * np.deg2rad(pixel_size)/(cadence) * 1e6
+
+	return dx_tot, dy_tot, ux, uy
