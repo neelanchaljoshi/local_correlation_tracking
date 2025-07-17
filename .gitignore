@@ -8,5 +8,6 @@ __pycache__
 *.png
 *.fits
 *.h5
-
+logs/
+data/
 
