@@ -193,11 +193,18 @@ change_track = True
 #------ Do you want to save the CCFs? ---------------------------------#
 save_ccf = True
 
-#----- Parameters from Hathaway 2011 in deg/day -----------------------#
-A = 14.437
-B = -1.48
-C = -2.99
-CRrate = 14.184
+if segname == 'magnetogram.fits':
+	#----- Parameters from Hathaway 2011 in deg/day -----------------------#
+	A = 14.437
+	B = -1.48
+	C = -2.99
+	CRrate = 14.184
+elif segname == 'continuum.fits':
+	#----- Parameters from Snodgrass 1984 B ------------------------------------#
+	A = 14.034
+	B = -1.702
+	C = -2.494
+	CRrate = 14.184
 
 #------ Parameters for the tukey window and the CCF grid search ---------------------#
 # We use 17 px to match size for 1 degree - 8 to match 0.5 degree for 2k
