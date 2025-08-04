@@ -38,7 +38,7 @@ from scipy.interpolate import CubicSpline
 def fast_cubic_spline_interpolate_stack(img_stack, target_time=60.0, times=[0, 45, 90, 135]):
 	"""
 	Fast cubic spline interpolation from a stack of 4 images taken at specified times.
-	
+
 	Parameters:
 	img_stack : np.ndarray
 		Array of shape (4, n, n) with images taken at 0s, 45s, 90s, and 135s.
@@ -46,60 +46,60 @@ def fast_cubic_spline_interpolate_stack(img_stack, target_time=60.0, times=[0, 4
 		Time (in seconds) at which to interpolate the image.
 	times : list or np.ndarray
 		List of time points corresponding to the images in img_stack. Default is [0, 45, 90, 135].
-	
+
 	Returns:
 	np.ndarray
 		Interpolated image at target_time, shape (n, n).
 	"""
 	if img_stack.shape[0] != 4:
 		raise ValueError("img_stack must have shape (4, n, n)")
-	
+
 	n, m = img_stack.shape[1], img_stack.shape[2]
 	images_flat = img_stack.reshape(4, -1)  # shape: (4, n*n)
 
 	# Spline interpolation along the time axis
 	cs = CubicSpline(times, images_flat, axis=0)
 	interpolated_flat = cs(target_time)  # shape: (n*n,)
-	
+
 	return interpolated_flat.reshape(n, m)
 
 
 def gather_bigsize(comm, obj, root):
-	  """
-	  This routine is to replace comm.gather() because comm.gather() gets stuck on swan when size > 30.
+	"""
+	This routine is to replace comm.gather() because comm.gather() gets stuck on swan when size > 30.
 
-	  Parameters
-	  ----------
-	  comm: MPI.COMM_WORLD
-	  obj: any python object
-	  root: int
-		  rank of dest
+	Parameters
+	----------
+	comm: MPI.COMM_WORLD
+	obj: any python object
+	root: int
+		rank of dest
 
-	  Returns
-	  -------
-	  out: list
-		  list of obj gathered from all ranks
+	Returns
+	-------
+	out: list
+		list of obj gathered from all ranks
 
-	  Examples
-	  --------
-	  msg = 'rank %d on %s' % (rank, host)
-	  #msg = comm.gather(msg, root=0)
-	  msg = gather_bigsize(comm, msg, root=0)
-	  """
-	  rank = comm.Get_rank()
-	  size = comm.Get_size()
-	  out = [] if rank == root else None
-	  for src in range(size):
-		  if src == root:
-			  buf = obj
-		  else:
-			  if rank == src:
-				  comm.send(obj, dest=root)
-			  elif rank == root:
-				  buf = comm.recv(source=src)
-		  if rank == root:
-			  out.append(buf)
-	  return out
+	Examples
+	--------
+	msg = 'rank %d on %s' % (rank, host)
+	#msg = comm.gather(msg, root=0)
+	msg = gather_bigsize(comm, msg, root=0)
+	"""
+	rank = comm.Get_rank()
+	size = comm.Get_size()
+	out = [] if rank == root else None
+	for src in range(size):
+		if src == root:
+			buf = obj
+		else:
+			if rank == src:
+				comm.send(obj, dest=root)
+			elif rank == root:
+				buf = comm.recv(source=src)
+		if rank == root:
+			out.append(buf)
+	return out
 
 
 MPI.Get_version()
@@ -169,7 +169,7 @@ cadence_keys = 45
 if interp:
 	cadence_interp = 60 # [s] int
 else:
-	cadence_interp = cadence_keys    
+	cadence_interp = cadence_keys
 njump = cadence//cadence_keys
 dstep = timedelta(minutes = args.dstep)
 
@@ -219,7 +219,7 @@ else:
 	pixel_size = 0.03 #Degrees per pixel in the remapped image for 4k
 
 degTorad = np.pi/180
-radtodeg = 180/np.pi 
+radtodeg = 180/np.pi
 
 alpha = 0.8
 
@@ -280,10 +280,10 @@ def fft_shift(img,shift):
 	#print(xf)
 	img_fft = fft.fft2(img)
 	shf = np.exp(-2j*np.pi*(yf[:,np.newaxis]*shift[1]/sz[1]+xf[np.newaxis]*shift[0]/sz[0]))
-	
+
 	img_fft *= shf
 	img_shf = fft.ifft2(img_fft).real
-	
+
 	return img_shf
 
 
@@ -487,7 +487,7 @@ for yr in range(ystart,ystop):
 					T.append(datetime.now())
 					logger.info('--- %s ---', dat.strftime(date_fmt))
 					logger.info('%s', T[-1])
-				
+
 				dat0 = datetime.strptime(keys['t_rec'][0], '%Y.%m.%d_%H:%M:%S_TAI')
 				ii = (dat - dat0).total_seconds()/cadence_keys
 				assert ii.is_integer()
@@ -540,7 +540,7 @@ for yr in range(ystart,ystop):
 					else:
 						img1, img2 = None, None
 
-				if interp:	
+				if interp:
 					isbad, img1, img2, img3, img4 = comm.bcast([isbad, img1, img2, img3, img4], root=0)
 				else:
 					isbad, img1, img2 = comm.bcast([isbad, img1, img2], root=0)
@@ -551,7 +551,7 @@ for yr in range(ystart,ystop):
 				if rank == 0:
 					T.append(datetime.now())
 					logger.info('%s (ET read)', T[-1]-T[-2])
-				
+
 
 				if interp:
 					assert keys['crval1'][ii] == keys['crval1'][ii+njump] == keys['crval1'][ii+2*njump] == keys['crval1'][ii+3*njump] == 0
@@ -592,29 +592,29 @@ for yr in range(ystart,ystop):
 				# if rank == 0:
 				# 	print('k = {}'.format(k))
 				for ipatch,(clng,clat) in enumerate(xylist[lo:hi]):
-					
+
 					if interp:
 						dL_change = 0
 						if change_track:
 							lamda = clat
 							def get_dL_change(lamda, time_diff):
 								return (A + B*np.sin(np.deg2rad(lamda))**2 + C*np.sin(np.deg2rad(lamda))**4 - CRrate)*time_diff/(3600*24)
-					
+
 
 						dL = 0, keys['crln_obs'][ii] - keys['crln_obs'][ii+njump] + get_dL_change(lamda, 45), keys['crln_obs'][ii] - keys['crln_obs'][ii+2*njump] + get_dL_change(lamda, 90), keys['crln_obs'][ii] - keys['crln_obs'][ii+3*njump] + get_dL_change(lamda, 135)
-						
-						img1p, img2p, img3p, img4p = from_tan_to_postel([img1, img2, img3, img4], np.array(crpix1), np.array(crpix2),0, 0, cdelt1, cdelt2, np.array(rsun_obs), dB, dP, dL, nx_out = patch_size, 
-										ny_out = patch_size, lngc_out = clng,latc_out = clat, pixscale_out = pixel_size, 
-										interp_method = 'cubconv', verbose = 1, nthr = 1, header = False) 
+
+						img1p, img2p, img3p, img4p = from_tan_to_postel([img1, img2, img3, img4], np.array(crpix1), np.array(crpix2),0, 0, cdelt1, cdelt2, np.array(rsun_obs), dB, dP, dL, nx_out = patch_size,
+										ny_out = patch_size, lngc_out = clng,latc_out = clat, pixscale_out = pixel_size,
+										interp_method = 'cubconv', verbose = 1, nthr = 1, header = False)
 						img_interp = fast_cubic_spline_interpolate_stack(np.array([img1p, img2p, img3p, img4p]), target_time = cadence_interp, times = [0, 45, 90, 135])
 						ccf, _, _ = get_lct_map(img1p, img_interp)
 
-					else:	
+					else:
 						dL_change = 0
 						if change_track:
 							lamda = clat
 							dL_change = (A + B*np.sin(np.deg2rad(lamda))**2 + C*np.sin(np.deg2rad(lamda))**4 - CRrate)*cadence/(3600*24)
-					
+
 						dL = 0, keys['crln_obs'][ii] - keys['crln_obs'][ii+njump] + dL_change
 						img1p, img2p = from_tan_to_postel([img1, img2], crpix1, crpix2,0, 0, cdelt1, cdelt2, rsun_obs, dB, dP, dL,
 										nx_out = patch_size, ny_out = patch_size, lngc_out = clng, latc_out = clat,
@@ -650,7 +650,7 @@ for yr in range(ystart,ystop):
 		ux1 = np.zeros((hi-lo), dtype='f8')
 		uy1 = np.zeros((hi-lo), dtype='f8')
 
-		
+
 		for ixy, (ccf, (clng,clat)) in enumerate(zip(ccfs, xylist[lo:hi])):
 			if save_ccf == True:
 				if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 0:
@@ -668,7 +668,7 @@ for yr in range(ystart,ystop):
 		comm.Gatherv(uy1, [uy_all, chunks], root=0)
 
 		if rank == 0:
-			for (i,j), ux, uy in zip(ijlist, ux_all, uy_all):	
+			for (i,j), ux, uy in zip(ijlist, ux_all, uy_all):
 				utheta[it,j,i] = -uy
 				uphi[it,j,i] = ux
 			T1_chunk = datetime.now()
