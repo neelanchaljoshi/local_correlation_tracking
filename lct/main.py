@@ -1,19 +1,18 @@
 #!/usr/bin/env python
-import os, sys, shutil, socket
+import os, sys, socket
 import time
-from traceback import print_exc
 import argparse
 import logging
 from datetime import datetime, timedelta
 import numpy as np
 np.seterr(all='ignore')
-from astropy.wcs import WCS
 from astropy.io import fits
 from scipy import signal
 from astropy.table import Table
 from scipy.linalg import lstsq
 from scipy.ndimage import shift
 from scipy.ndimage.interpolation import zoom
+import configparser
 
 sys.path.insert(0, '/data/seismo/joshin/pypkg')
 
@@ -26,8 +25,7 @@ def strip_nonprintable(s):
 	printable = set(string.printable)
 	return ''.join([x for x in s if x in printable])
 
-from josh.remap import from_tan_to_cyl_mit_trk
-from josh.misc import xdays, append_suffix_number_push_back, strip_nonprintable
+from josh.misc import xdays, strip_nonprintable
 
 sys.path.insert(0, '/data/seismo/zhichao/codes/pypkg')
 from zclpy3.remap import from_tan_to_postel
@@ -118,8 +116,19 @@ if rank == 0:
 	assert len(msg) == size
 	print('\n'.join(msg))
 
-Ntry = 1
 nthr = int(os.getenv('OMP_NUM_THREADS', default=1))
+
+# --- config ---
+config = configparser.ConfigParser()
+config.read(sys.argv[1])
+NX = int(config.get('main', 'NX'))
+NY = int(config.get('main', 'NY'))
+Ntry = int(config.get('main', 'Ntry'))
+downsample = int(config.get('main', 'downsample'))
+interpolate = int(config.get('main', 'interpolate'))
+print('NX = %d, NY = %d, Ntry = %d, downsample = %d, interpolate = %d' % (NX, NY, Ntry, downsample, interpolate))
+sys.exit(0)
+
 
 # --- arguments ---
 parser = argparse.ArgumentParser(description='compute flows from granulation tracking')
@@ -628,9 +637,9 @@ for yr in range(ystart,ystop):
 					# print('clat = ', clat)
 					# print('clng = ', clng)
 					if save_ccf == True:
-						if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 0:
+						if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 0 and save_ccf == True:
 							np.save('/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/ccfs/gran/{}_{}_{}_{}_{}_{}_4k_gran_interp_no_av.npy'.format(dat.strftime('%Y%m%d_%H%M%S'), 'ccf', dspan, dstep, round(clat, 1), round(clng, 1)), ccf)
-						if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 1:
+						if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 1 and save_ccf == True:
 							np.save('/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/ccfs/gran/{}_{}_{}_{}_{}_{}_2k_gran_interp_no_av.npy'.format(dat.strftime('%Y%m%d_%H%M%S'), 'ccf', dspan, dstep, round(clat, 1), round(clng, 1)), ccf)
 					ccfs[ipatch] += ccf
 					nums[ipatch] += 1
@@ -653,9 +662,9 @@ for yr in range(ystart,ystop):
 
 		for ixy, (ccf, (clng,clat)) in enumerate(zip(ccfs, xylist[lo:hi])):
 			if save_ccf == True:
-				if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 0:
+				if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 0 and save_ccf == True:
 					np.save('/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/ccfs/gran/{}_{}_{}_{}_{}_{}_4k_gran_interp_av.npy'.format(dat.strftime('%Y%m%d_%H%M%S'), 'ccf', dspan, dstep, round(clat, 1), round(clng, 1)), ccf)
-				if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 1:
+				if (abs(clat) < 0.1) and (abs(clng) < 0.1) and downsample == 1 and save_ccf == True:
 					np.save('/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/ccfs/gran/{}_{}_{}_{}_{}_{}_2k_gran_interp_av.npy'.format(dat.strftime('%Y%m%d_%H%M%S'), 'ccf', dspan, dstep, round(clat, 1), round(clng, 1)), ccf)
 			if np.isnan(ccf).any():
 				ux1[ixy] = uy1[ixy] = np.nan
