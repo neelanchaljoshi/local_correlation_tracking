@@ -23,7 +23,7 @@ def ft_to_2d_power_spectrum(ft, mode, dt):
     if mode == 'rossby':
         lat_eq = (abs(lat_og) <= 30)
     elif mode == 'highlat':
-        lat_eq = (abs(lat_og) >= 45) & (abs(lat_og) <= 75) 
+        lat_eq = (abs(lat_og) >= 45) & (abs(lat_og) <= 75)
     elif mode == 'critlat':
         lat_eq = (abs(lat_og) >= 15) & (abs(lat_og) <= 45)
     nt = len(ft)
@@ -38,14 +38,14 @@ _, _, ps_uthe_sym_gran = ft_to_2d_power_spectrum(ft_uthe_sym_gran, 'rossby', dt 
 
 # %%
 # Plotting the 2D power spectra
-fig, ax = plt.subplots(1, 2, figsize=(12, 6), constrained_layout=True) 
-ax[0].tick_params(which = 'both', top=True, bottom=True, right=True, left=True) 
+fig, ax = plt.subplots(1, 2, figsize=(12, 6), constrained_layout=True)
+ax[0].tick_params(which = 'both', top=True, bottom=True, right=True, left=True)
 im = ax[0].pcolormesh(M_arr, freqs, ps_uthe_sym_mag, cmap = 'binary', shading = 'auto',rasterized = True, vmin=0.0, vmax=0.06)
 ax[0].plot(M_arr, -2*456/(M_arr+1), color = 'darkorange',label = r'$\omega = -2\Omega/(m+1)$', linewidth = 2)
 ax[0].set_ylim([-500, 100])
 ax[0].set_title(r'Power spectrum of $u_\theta^+$ (LCTMag)', fontsize = 14, pad = 20)
 ax[0].set_ylabel('Frequency [nHz]')
-ax[0].set_xlabel(r'm')
+ax[0].set_xlabel(r'$m$')
 ax[0].set_xticks(np.arange(0, 21, 2), minor = False)
 ax[0].set_xticks(np.arange(0, 20, 1), minor = True)
 ax[0].set_yticks(np.arange(-500, 101, 100), minor = False)
@@ -56,10 +56,10 @@ ax[0].set_xlim([0,20])
 ax[0].legend()
 
 im = ax[1].pcolormesh(M_arr, freqs, ps_uthe_sym_gran, cmap = 'binary', shading = 'auto',rasterized = True, vmin=0.0, vmax=0.06)
-ax[1].tick_params(which = 'both', top=True, bottom=True, right=True, left=True) 
+ax[1].tick_params(which = 'both', top=True, bottom=True, right=True, left=True)
 ax[1].plot(M_arr, -2*456/(M_arr+1), color = 'darkorange',label = r'$\omega = -2\Omega/(m+1)$', linewidth = 2)
 ax[1].set_ylim([-500, 100])
-ax[1].set_xlabel(r'm')
+ax[1].set_xlabel(r'$m$')
 ax[1].legend()
 # ax[1].set_ylabel('Frequency [nHz]')
 ax[1].set_title(r'Power spectrum of $u_\theta^+$ (LCTGran)', fontsize = 14, pad = 20)
