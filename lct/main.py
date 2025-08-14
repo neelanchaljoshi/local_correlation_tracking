@@ -118,7 +118,7 @@ if rank == 0:
 
 nthr = int(os.getenv('OMP_NUM_THREADS', default=1))
 
-# --- config ---
+# --- config from main ---
 config = configparser.ConfigParser()
 config.read(sys.argv[1])
 NX = int(config.get('main', 'NX'))
@@ -127,9 +127,28 @@ Ntry = int(config.get('main', 'Ntry'))
 downsample = int(config.get('main', 'downsample'))
 interpolate = int(config.get('main', 'interpolate'))
 print('NX = %d, NY = %d, Ntry = %d, downsample = %d, interpolate = %d' % (NX, NY, Ntry, downsample, interpolate))
+#sys.exit(0)
+
+
+# --- config from lctparams ---
+date_fmt = config.get('lctparams', 'date_fmt')
+yr_start = int(config.get('lctparams', 'yr_start'))
+yr_stop = int(config.get('lctparams', 'yr_stop'))
+dspan = timedelta(hours=int(config.get('lctparams', 'dspan')))
+dstep = timedelta(seconds=int(config.get('lctparams', 'dstep')))
+cadence = int(config.get('lctparams', 'cadence'))
+cadence_keys = int(config.get('lctparams', 'dataset_cadence'))
+segname = config.get('lctparams', 'segname')
+rootdir_in = config.get('lctparams', 'rootdir_in')
+rootdir_out = config.get('lctparams', 'rootdir_out')
+patch_size = int(config.get('lctparams', 'patch_size'))
+alpha = float(config.get('lctparams', 'alpha'))
+nlat = int(config.get('lctparams', 'nlat'))
+nlng = int(config.get('lctparams', 'nlng'))
+print('date_fmt = %s, yr_start = %d, yr_stop = %d, dspan = %s, dstep = %s, cadence = %d, cadence_keys = %d, segname = %s, rootdir_in = %s, rootdir_out = %s, patch_size = %d, alpha = %.2f, nlat = %d, nlng = %d' %
+	(date_fmt, yr_start, yr_stop, dspan, dstep, cadence, cadence_keys, segname, rootdir_in, rootdir_out, patch_size, alpha, nlat, nlng))
+print(type(date_fmt), type(yr_start), type(yr_stop), type(dspan), type(dstep), type(cadence), type(cadence_keys), type(segname), type(rootdir_in), type(rootdir_out), type(patch_size), type(alpha), type(nlat), type(nlng))
 sys.exit(0)
-
-
 # --- arguments ---
 parser = argparse.ArgumentParser(description='compute flows from granulation tracking')
 parser.add_argument('yr_start', type=int, help='start year')
