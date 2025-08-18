@@ -7,7 +7,7 @@
 #SBATCH --mail-type=FAIL,REQUEUE,STAGE_OUT,END
 #SBATCH --mail-user=joshin@mps.mpg.de
 #SBATCH --output=logs/%x_slurm_%a.log
-#SBATCH --job-name=2019_06_2019_06_120_030_4k_sg_flow_010Res_2deg_ccfs_gran
+#SBATCH --job-name=2019_gran_lct
 #SBATCH --ntasks=500
 ##SBATCH --nodelist=helio[43-51]
 ##SBATCH --nodes=1
@@ -49,33 +49,6 @@ module load GCC/12.2.0 OpenMPI/4.1.4
 export PMIX_MCA_psec=^munge
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-yr_start=${SLURM_JOB_NAME:0:4}
-month_start=${SLURM_JOB_NAME:5:2}
-yr_end=${SLURM_JOB_NAME:8:4}
-month_end=${SLURM_JOB_NAME:13:2}
-dspan=${SLURM_JOB_NAME:16:3}
-dstep=${SLURM_JOB_NAME:20:3}
-downsample=1
-interpolate=1
-# month_start=$SLURM_ARRAY_TASK_ID
-# echo $yr_start $month_start
+config_file="config_file.cfg"
 
-# if [[ $month_start -eq 12 ]]
-# then
-#     yr_end=$(($yr_start+1))
-#     month_end=1
-#     echo "month_start is 12"
-# else
-#     yr_end=$yr_start
-#     month_end=$(($month_start+1))
-#     echo "month_start is not 12"
-# fi
-
-# yr_end= if [ $month_start -eq 12 ]; then echo $yr_start+1; else echo $yr_start; fi
-# month_end= if [ $month_start -eq 12 ]; then echo 1; else echo $month_start+1; fi
-# month_end=${SLURM_JOB_NAME:13:2}
-
-echo $yr_start $month_start 
-echo $yr_end $month_end
-
-srun --mpi=pmix python -W ignore main_psf_interp_gran.py $yr_start $month_start $yr_end $month_end $dspan $dstep $downsample $interpolate -l debug
+srun --mpi=pmix python -W ignore main.py $config_file -l debug
