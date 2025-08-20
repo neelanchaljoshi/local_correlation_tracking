@@ -41,15 +41,17 @@ elif symmetry == 'all':
 
 #Configurations
 # fig_path = '/data/seismo/joshin/pipeline-test/paper_lct/figures_new/{}/m{}/{}/{}/'.format(data, m, mode, symmetry)
-fig_path = '/data/seismo/joshin/pipeline-test/paper_lct/data_plots_paper/from_script/'
+flow_data_path = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/data'
+pathlib.Path(flow_data_path).mkdir(parents=True, exist_ok=True)
+fig_path = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/{}/{}/m{}/{}/{}/'.format(data, mode, m, symmetry, cent_freq)
 pathlib.Path(fig_path).mkdir(parents=True, exist_ok=True)
 
 # m = 2
 # mode = 'highlat'
 # data = 'hmi.m_1h'
 reject_type = 'clip' # 'clip' or 'noclip'
-span_lower = 2013
-span_upper = 2018
+span_lower = 2010
+span_upper = 2023
 # symmetry = 'all' # symmetry in uphi
 
 
@@ -61,10 +63,10 @@ data_name = data.replace('.', '_')
 # uthe_all = np.load('/scratch/seismo/joshin/pipeline-test/IterativeLCT/{}/uthe_99_5_perc_inclusion_test_TAC.npy'.format(data))
 uphi_all = np.load('/data/seismo/joshin/pipeline-test/paper_lct/processed_data/uphi_{}_processed.npy'.format(data_name))
 uthe_all = np.load('/data/seismo/joshin/pipeline-test/paper_lct/processed_data/utheta_{}_processed.npy'.format(data_name))
-t_array = np.load('/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.m_1h/t_all.npy')
-crln_obs = np.load('/scratch/seismo/joshin/pipeline-test/key_arrays_extracted/crln_obs_10_22.npy')
-crlt_obs = np.load('/scratch/seismo/joshin/pipeline-test/key_arrays_extracted/crlt_obs_10_22.npy')
-rsun_obs = np.load('/scratch/seismo/joshin/pipeline-test/key_arrays_extracted/rsun_obs_10_22.npy')
+t_array = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/t_rec.npy')
+crln_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/crln_obs.npy')
+crlt_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/crlt_obs.npy')
+rsun_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/rsun_obs.npy')
 
 #Symmetrize
 uphi_sym = (uphi_all + uphi_all[:, ::-1, :])/2
@@ -319,8 +321,10 @@ def run():
 
     uphi_ft, freq_ffts, uphi_r = transform_fourier(uphi_clip, crln, cft1, cfl1, span, dt = dt, to_Nhz = True)
     uthe_ft, freq_ffts, uthe_r = transform_fourier(uthe_clip, crln, cft2, cfl2, span, dt = dt, to_Nhz = True)
-    np.save(fig_path + 'uphi_ft_m{}_{}_{}_{}_{}_{}_{}.npy'.format(m, mode, cent_freq, span_lower, span_upper-1, sym_uphi, data_name), uphi_ft)
-    np.save(fig_path + 'uthe_ft_m{}_{}_{}_{}_{}_{}_{}.npy'.format(m, mode, cent_freq, span_lower, span_upper-1, sym_uthe, data_name), uthe_ft)
+    np.save(fig_path + 'uphi_ft_{}_{}_{}_{}.npy'.format(span_lower, span_upper-1, sym_uphi, data_name), uphi_ft)
+    np.save(fig_path + 'uthe_ft_{}_{}_{}_{}.npy'.format(span_lower, span_upper-1, sym_uthe, data_name), uthe_ft)
+    np.save(fig_path + 'uphi_r_{}_{}_{}.npy'.format(span_lower, span_upper-1, data_name), uphi_r)
+    np.save(fig_path + 'uthe_r_{}_{}_{}.npy'.format(span_lower, span_upper-1, data_name), uthe_r)
 
 
 
