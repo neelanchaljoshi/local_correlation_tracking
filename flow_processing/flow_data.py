@@ -51,7 +51,7 @@ class FlowData:
             self (FlowData): The instance of FlowData with the flow array, time array, and spatial coordinates.
         """
 
-        for i, n in enumerate(np.arange(10, 23)):
+        for i, n in enumerate(np.arange(10, 25)):
             file_path = f'/scratch/seismo/joshin/pipeline-test/IterativeLCT/{self.which_data}/20{n}_dt_1h_dspan_6h_dstep_120m.hdf5'
             with h5py.File(file_path, 'r') as f1:
                 t = f1['tstart'][()]
@@ -148,4 +148,3 @@ class FlowData:
             None
         """
         make_plot(self.flow_array, self.t_array, self.mad if hasattr(self, 'mad') else None, n, which_plot)
-    
