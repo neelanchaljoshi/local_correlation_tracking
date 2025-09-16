@@ -17,10 +17,10 @@ def create_arrays_from_keys_for_all_years(key_name, data_series, cadence, dtype=
 # %%
 if __name__ == "__main__":
     # Example usage
-    key_name = 'rsun_obs'  # Replace with actual key name
-    data_series = 'hmi.m_720s'  # Replace with actual data series
-    cadence = 720  # Replace with actual cadence in seconds
-    keys_array = create_arrays_from_keys_for_all_years(key_name, data_series, cadence = cadence, dtype=np.float64)
+    key_name = 't_rec'  # Replace with actual key name
+    data_series = 'hmi.ic_45s'  # Replace with actual data series
+    cadence = 45  # Replace with actual cadence in seconds
+    keys_array = create_arrays_from_keys_for_all_years(key_name, data_series, cadence = cadence, dtype='S32')
     print(keys_array)  # Output the array for verification
 # %%
 print(" The shape of the keys array is: ", keys_array.shape)
