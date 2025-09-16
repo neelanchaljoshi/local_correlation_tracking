@@ -1,5 +1,6 @@
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
 def make_plot(flow_array, t_array, mad, n, which_plot):
     """

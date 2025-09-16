@@ -28,9 +28,9 @@ class FlowData:
         save(): Saves the processed flow array to a file.
         plot(n, which_plot): Generates and saves plots for the flow data.
     """
-    crln_obs = np.load('/scratch/seismo/joshin/pipeline-test/key_arrays_extracted/crln_obs_10_22.npy')
-    crlt_obs = np.load('/scratch/seismo/joshin/pipeline-test/key_arrays_extracted/crlt_obs_10_22.npy')
-    rsun_obs = np.load('/scratch/seismo/joshin/pipeline-test/key_arrays_extracted/rsun_obs_10_22.npy')
+    crln_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/crln_obs.npy')
+    crlt_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/crlt_obs.npy')
+    rsun_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/rsun_obs.npy')
 
     def __init__(self, which_flow, which_data):
         """
@@ -51,8 +51,9 @@ class FlowData:
             self (FlowData): The instance of FlowData with the flow array, time array, and spatial coordinates.
         """
 
-        for i, n in enumerate(np.arange(10, 25)):
-            file_path = f'/scratch/seismo/joshin/pipeline-test/IterativeLCT/{self.which_data}/20{n}_dt_1h_dspan_6h_dstep_120m.hdf5'
+        for i, n in tqdm(enumerate(np.arange(10, 25))):
+            # file_path = f'/scratch/seismo/joshin/pipeline-test/IterativeLCT/{self.which_data}/20{n}_dt_1h_dspan_6h_dstep_120m.hdf5' #for m_720s
+            file_path = f'/scratch/seismo/joshin/pipeline-test/IterativeLCT/{self.which_data}/20{n}_ntry_3_grid_len_5_dspan_6_dstep_30_extent_73.hdf5' # for ic_45s
             with h5py.File(file_path, 'r') as f1:
                 t = f1['tstart'][()]
                 flow = f1[self.which_flow][()]
@@ -67,7 +68,7 @@ class FlowData:
                 else:
                     self.flow_array = np.append(self.flow_array, flow, axis=0)
                     self.t = np.append(self.t, t, axis=0)
-
+                print(n, len(t))
         dats = [datetime.strptime(str(s, encoding='utf-8'), '%Y.%m.%d_%H:%M:%S') for s in self.t]
         self.t_array = Time(dats, format='datetime', scale='tai').decimalyear
         self.nt, self.nlat, self.nlng = len(self.t_array), len(self.lat_og), len(self.lon_og)
@@ -111,6 +112,9 @@ class FlowData:
         return self
 
     def remove_yearly_variation(self):
+        print(self.t_array.shape, self.crlt_obs.shape)
+        print(self.t_array)
+        print(self.nt)
         pop, _ = curve_fit(sin_fit, self.t_array, np.nan_to_num(self.crlt_obs))
         for i in tqdm(range(self.nlat)):
             for j in range(self.nlng):

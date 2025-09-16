@@ -11,7 +11,8 @@ def save_flow_array(flow_array, which_flow, which_data):
     Returns:
         None
     """
-    os.makedirs('processed_data', exist_ok=True)
-    data_name = which_data.replace('.', '_') + '_dt_1h'
-    file_path = os.path.join('processed_data', f'{which_flow}_{data_name}_processed.npy')
+    os.makedirs('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data', exist_ok=True)
+    # data_name = which_data.replace('.', '_') + '_dt_1h'
+    data_name = which_data.replace('.', '_') + 'granule'
+    file_path = os.path.join('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data', f'{which_flow}_{data_name}_processed.npy')
     np.save(file_path, flow_array)
