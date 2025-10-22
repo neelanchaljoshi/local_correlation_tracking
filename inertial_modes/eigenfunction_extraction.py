@@ -1,3 +1,4 @@
+# %%
 import numpy as np
 import h5py
 import os
@@ -43,7 +44,7 @@ elif symmetry == 'all':
 # fig_path = '/data/seismo/joshin/pipeline-test/paper_lct/figures_new/{}/m{}/{}/{}/'.format(data, m, mode, symmetry)
 flow_data_path = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/data'
 pathlib.Path(flow_data_path).mkdir(parents=True, exist_ok=True)
-fig_path = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/{}/{}/m{}/{}/{}/'.format(data, mode, m, symmetry, cent_freq)
+fig_path = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data/'
 pathlib.Path(fig_path).mkdir(parents=True, exist_ok=True)
 
 # m = 2
@@ -51,7 +52,7 @@ pathlib.Path(fig_path).mkdir(parents=True, exist_ok=True)
 # data = 'hmi.m_1h'
 reject_type = 'clip' # 'clip' or 'noclip'
 span_lower = 2010
-span_upper = 2023
+span_upper = 2025
 # symmetry = 'all' # symmetry in uphi
 
 
@@ -61,12 +62,22 @@ data_name = data.replace('.', '_')
 # Load Data
 # uphi_all = np.load('/scratch/seismo/joshin/pipeline-test/IterativeLCT/{}/uphi_99_5_perc_inclusion.npy'.format(data))
 # uthe_all = np.load('/scratch/seismo/joshin/pipeline-test/IterativeLCT/{}/uthe_99_5_perc_inclusion_test_TAC.npy'.format(data))
-uphi_all = np.load('/data/seismo/joshin/pipeline-test/paper_lct/processed_data/uphi_{}_processed.npy'.format(data_name))
-uthe_all = np.load('/data/seismo/joshin/pipeline-test/paper_lct/processed_data/utheta_{}_processed.npy'.format(data_name))
+uphi_all = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data/uphi_{}_processed.npy'.format(data_name))
+uthe_all = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data/utheta_{}_processed.npy'.format(data_name))
 t_array = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/t_rec.npy')
 crln_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/crln_obs.npy')
 crlt_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/crlt_obs.npy')
 rsun_obs = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/rsun_obs.npy')
+
+def year_fraction(date):
+    start = datetime(date.year, 1, 1).toordinal()
+    year_length = datetime(date.year+1, 1, 1).toordinal() - start
+    return date.year + float(date.toordinal() - start) / year_length
+
+print(t_array)
+# Convert t_array from binary string to decimal year
+t_array_datetime = [datetime.strptime(str(t, 'utf-8'), '%Y.%m.%d_%H:%M:%S_TAI') for t in t_array]
+t_array = np.array([year_fraction(date) for date in t_array_datetime])
 
 #Symmetrize
 uphi_sym = (uphi_all + uphi_all[:, ::-1, :])/2
@@ -328,10 +339,10 @@ def run():
 
 
 
-    ef_uphi, ef_uthe, final_td = extract_eigenfunction_lats(uphi_ft, uthe_ft, m, cent_freq, freq_ffts, lat_for_scaling = 0, nlng = nlng_carr, df = 10)
-    np.save(fig_path + 'eigenfunction_uphi_m{}_{}_{}_{}_{}_{}_{}.npy'.format(m, mode, cent_freq, span_lower, span_upper-1, sym_uphi, data_name), ef_uphi)
-    np.save(fig_path + 'eigenfunction_uthe_m{}_{}_{}_{}_{}_{}_{}.npy'.format(m, mode, cent_freq, span_lower, span_upper-1, sym_uthe, data_name), ef_uthe)
-    np.save(fig_path + 'final_td_m{}_{}_{}_{}_{}.npy'.format(m, mode, span_lower, span_upper-1, data_name), final_td)
+    # ef_uphi, ef_uthe, final_td = extract_eigenfunction_lats(uphi_ft, uthe_ft, m, cent_freq, freq_ffts, lat_for_scaling = 0, nlng = nlng_carr, df = 10)
+    # np.save(fig_path + 'eigenfunction_uphi_m{}_{}_{}_{}_{}_{}_{}.npy'.format(m, mode, cent_freq, span_lower, span_upper-1, sym_uphi, data_name), ef_uphi)
+    # np.save(fig_path + 'eigenfunction_uthe_m{}_{}_{}_{}_{}_{}_{}.npy'.format(m, mode, cent_freq, span_lower, span_upper-1, sym_uthe, data_name), ef_uthe)
+    # np.save(fig_path + 'final_td_m{}_{}_{}_{}_{}.npy'.format(m, mode, span_lower, span_upper-1, data_name), final_td)
     return None
 
 
@@ -343,3 +354,5 @@ def run():
 if __name__ == '__main__':
     run()
     plt.close('all')
+
+# %%
