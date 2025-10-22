@@ -33,6 +33,7 @@ ccf_width_y_mag = ccf_width_y_mag * deg_to_km[:, np.newaxis] / 1000.0  # Convert
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
+import seaborn as sns
 
 # Replace NaN or Inf values in the data arrays
 ccf_width_x_gran = np.nan_to_num(ccf_width_x_gran, nan=0.0, posinf=0.0, neginf=0.0)
@@ -88,5 +89,57 @@ fig.colorbar(c4, ax=axs[1, 1], orientation='vertical', label = 'Width (Mm)')
 axs[1, 1].set_title('CCF Width Y (Granulation-based LCT)')
 
 plt.tight_layout()
+plt.show()
+# %%
+# Set the seaborn style
+sns.set(style="ticks")
+
+# Plot the data
+fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+
+# Set the ticks for latitude and longitude
+lat_ticks = np.arange(-90, 91, 30)
+lon_ticks = np.arange(-90, 91, 30)
+
+# Granulation-based plots (top panel)
+c3 = axs[0, 0].pcolormesh(lons, lats, ccf_width_x_gran[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+fig.colorbar(c3, ax=axs[0, 0], orientation='vertical', label='Width (Mm)')
+axs[0, 0].set_title('CCF Width X (Granulation-based LCT)', fontsize=16)  # Increased font size
+axs[0, 0].set_xticks(lon_ticks)
+axs[0, 0].set_yticks(lat_ticks)
+axs[0, 0].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
+axs[0, 0].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
+axs[0, 0].tick_params(axis='both', labelsize=14)  # Increased tick label size
+
+c4 = axs[0, 1].pcolormesh(lons, lats, ccf_width_y_gran[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+fig.colorbar(c4, ax=axs[0, 1], orientation='vertical', label='Width (Mm)')
+axs[0, 1].set_title('CCF Width Y (Granulation-based LCT)', fontsize=16)  # Increased font size
+axs[0, 1].set_xticks(lon_ticks)
+axs[0, 1].set_yticks(lat_ticks)
+axs[0, 1].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
+axs[0, 1].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
+axs[0, 1].tick_params(axis='both', labelsize=14)  # Increased tick label size
+
+# Magnetogram-based plots (bottom panel)
+c1 = axs[1, 0].pcolormesh(lons, lats, ccf_width_x_mag[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+fig.colorbar(c1, ax=axs[1, 0], orientation='vertical', label='Width (Mm)')
+axs[1, 0].set_title('CCF Width X (Magnetogram-based LCT)', fontsize=16)  # Increased font size
+axs[1, 0].set_xticks(lon_ticks)
+axs[1, 0].set_yticks(lat_ticks)
+axs[1, 0].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
+axs[1, 0].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
+axs[1, 0].tick_params(axis='both', labelsize=14)  # Increased tick label size
+
+c2 = axs[1, 1].pcolormesh(lons, lats, ccf_width_y_mag[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+fig.colorbar(c2, ax=axs[1, 1], orientation='vertical', label='Width (Mm)')
+axs[1, 1].set_title('CCF Width Y (Magnetogram-based LCT)', fontsize=16)  # Increased font size
+axs[1, 1].set_xticks(lon_ticks)
+axs[1, 1].set_yticks(lat_ticks)
+axs[1, 1].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
+axs[1, 1].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
+axs[1, 1].tick_params(axis='both', labelsize=14)  # Increased tick label size
+
+plt.tight_layout()
+plt.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/ccf_widths_comparison.pdf')
 plt.show()
 # %%
