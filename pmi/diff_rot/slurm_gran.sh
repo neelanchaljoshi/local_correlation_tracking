@@ -2,20 +2,15 @@
 #SBATCH --partition=swan
 #SBATCH --qos=swan_default
 #SBATCH --account=seismo
-#SBATCH --mem=200G
-#SBATCH --time=2-12:40:00
-#SBATCH --mail-type=FAIL,REQUEUE,STAGE_OUT,END
+#SBATCH --mem=10G
+#SBATCH --time=1-00:00:00
+#SBATCH --mail-type=FAIL,INVALID_DEPEND,REQUEUE,STAGE_OUT,END
 #SBATCH --mail-user=joshin@mps.mpg.de
-#SBATCH --output=logs/%x_slurm_%a.log
-#SBATCH --job-name=2019_01_2020_01_360_030_diff_rot_5deg_gran_4k
-#SBATCH --ntasks=1000
-##SBATCH --nodelist=helio[43-51]
-##SBATCH --nodes=1
-##SBATCH --ntasks-per-node=128
+#SBATCH --output=logs/%x_slurm%A_%a.log
+#SBATCH --job-name=2017_360_030_diff_rot_5deg_gran_4k
 #SBATCH --cpus-per-task=1
-##SBATCH --constraint=bigmem
-#SBATCH --exclude=swan[18,27,28]
-##SBATCH --array=1-12
+##SBATCH --exclude=swan[18,27,28]
+#SBATCH --array=0-364
 
 # ref: https://slurm.schedmd.com/job_array.html
 # ref: https://slurm.schedmd.com/sbatch.html#lbAH
@@ -45,37 +40,34 @@ conda activate py311
 source /usr/local/lmod/8.7.14/init/bash
 module use /sw/eb/hmns/modules/all/Core
 module purge
-module load GCC/12.2.0 OpenMPI/4.1.4
-export PMIX_MCA_psec=^munge
+module load GCC/12.2.0
+# export PMIX_MCA_psec=^munge
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export TIME="\nET %E | CPU %P | Max %M KB max"
 
-yr_start=${SLURM_JOB_NAME:0:4}
-month_start=${SLURM_JOB_NAME:5:2}
-yr_end=${SLURM_JOB_NAME:8:4}
-month_end=${SLURM_JOB_NAME:13:2}
-dspan=${SLURM_JOB_NAME:16:3}
-dstep=${SLURM_JOB_NAME:20:3}
-downsample=0
-interpolate=1
-# month_start=$SLURM_ARRAY_TASK_ID
-# echo $yr_start $month_start
+yr=${SLURM_JOB_NAME:0:4}
+dspan=360
+dstep=30
+downsample=""
+interpolate="--interp"
 
-# if [[ $month_start -eq 12 ]]
-# then
-#     yr_end=$(($yr_start+1))
-#     month_end=1
-#     echo "month_start is 12"
-# else
-#     yr_end=$yr_start
-#     month_end=$(($month_start+1))
-#     echo "month_start is not 12"
-# fi
+get_start_stop_from_index(){
+    python3 <<END
+from datetime import datetime, timedelta
+index=$1
+year=$2
+start = datetime(year, 1, 1) + timedelta(days=index)
+end = start + timedelta(days=1)
+print(start.strftime("%Y.%m.%d_%H:%M:%S_TAI"))
+print(end.strftime("%Y.%m.%d_%H:%M:%S_TAI"))
+END
+}
 
-# yr_end= if [ $month_start -eq 12 ]; then echo $yr_start+1; else echo $yr_start; fi
-# month_end= if [ $month_start -eq 12 ]; then echo 1; else echo $month_start+1; fi
-# month_end=${SLURM_JOB_NAME:13:2}
+start_stop=( $(get_start_stop_from_index $SLURM_ARRAY_TASK_ID $yr) )
+dstart="${start_stop[0]}"
+dstop="${start_stop[1]}"
 
-echo $yr_start
-echo $yr_end
+echo $dstart
+echo $dstop
 
-srun --mpi=pmix python -W ignore main_psf_interp_gran.py $yr_start $yr_end $dspan $dstep $downsample $interpolate -l debug
+env time python -W ignore diff_rot_single_thread.py $dstart $dstop $dspan $dstep $downsample $interpolate -l debug
