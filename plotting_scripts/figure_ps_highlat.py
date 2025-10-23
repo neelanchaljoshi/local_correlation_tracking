@@ -6,11 +6,11 @@ plt.rcParams.update({'font.size': 14})
 plt.rcParams['font.family'] = 'sans-serif'
 # %%
 # Load the data for mag and gran uphi, sym and anti
-ft_uphi_sym_mag = np.load('/data/seismo/joshin/pipeline-test/lct_data_processed/uphi_fourier_hmi_m_720s_dt_1h_sym_2010_2023.npy')
-ft_uphi_anti_mag = np.load('/data/seismo/joshin/pipeline-test/lct_data_processed/uphi_fourier_hmi_m_720s_dt_1h_anti_2010_2023.npy')
+ft_uphi_sym_mag = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data/uphi_ft_2010_2024_sym_hmi_m_720s_dt_1h.npy')
+ft_uphi_anti_mag = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data/uphi_ft_2010_2024_anti_hmi_m_720s_dt_1h.npy')
 
-ft_uphi_sym_gran = np.load('/data/seismo/joshin/pipeline-test/lct_data_processed/uphi_fourier_hmi_ic_45s_sym_2010_2023.npy')
-ft_uphi_anti_gran = np.load('/data/seismo/joshin/pipeline-test/lct_data_processed/uphi_fourier_hmi_ic_45s_anti_2010_2023.npy')
+ft_uphi_sym_gran = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data/uphi_ft_2010_2024_sym_hmi_ic_45s_granule.npy')
+ft_uphi_anti_gran = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/processed_data/uphi_ft_2010_2024_anti_hmi_ic_45s_granule.npy')
 # %%
 # Set the figure path
 fig_path = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs'
