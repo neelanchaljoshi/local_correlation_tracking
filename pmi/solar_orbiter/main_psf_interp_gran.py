@@ -1,4 +1,4 @@
-solar_orbiter#!/usr/bin/env python
+#!/usr/bin/env python
 import os, sys, socket
 import time
 import argparse
@@ -29,36 +29,6 @@ from josh.misc import xdays, strip_nonprintable
 sys.path.insert(0, '/data/seismo/zhichao/codes/pypkg')
 from zclpy3.remap import from_tan_to_postel
 from zclpy3.mpi_util import get_delimiters
-
-from scipy.interpolate import CubicSpline
-
-def fast_cubic_spline_interpolate_stack(img_stack, target_time=60.0, times=[0, 45, 90, 135]):
-	"""
-	Fast cubic spline interpolation from a stack of 4 images taken at specified times.
-
-	Parameters:
-	img_stack : np.ndarray
-		Array of shape (4, n, n) with images taken at 0s, 45s, 90s, and 135s.
-	target_time : float
-		Time (in seconds) at which to interpolate the image.
-	times : list or np.ndarray
-		List of time points corresponding to the images in img_stack. Default is [0, 45, 90, 135].
-
-	Returns:
-	np.ndarray
-		Interpolated image at target_time, shape (n, n).
-	"""
-	if img_stack.shape[0] != 4:
-		raise ValueError("img_stack must have shape (4, n, n)")
-
-	n, m = img_stack.shape[1], img_stack.shape[2]
-	images_flat = img_stack.reshape(4, -1)  # shape: (4, n*n)
-
-	# Spline interpolation along the time axis
-	cs = CubicSpline(times, images_flat, axis=0)
-	interpolated_flat = cs(target_time)  # shape: (n*n,)
-
-	return interpolated_flat.reshape(n, m)
 
 
 def gather_bigsize(comm, obj, root):
@@ -172,13 +142,13 @@ njump = cadence//cadence_keys
 dstep = timedelta(minutes = args.dstep)
 
 if downsample == 1:
-	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.ic_45s/keys_all_bad_excluded/keys_2k_2k/keys-%Y-2k.fits'
-	outfile_fmt = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/solar_orbiter/data/%d_dspan_{}_dstep_{}_dt_{}_flows_1,5deg_gran_2k.hdf5'.format(args.dspan, args.dstep, cadence_interp)
-	segname = 'continuum.fits'
+	infile_fmt = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/solar_orbiter/data/%d_fdt_keys_from_hmi_0.5au.fits'
+	outfile_fmt = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/solar_orbiter/data/%d_dspan_{}_dstep_{}_dt_{}_flows_5deg_mag_fdt.hdf5'.format(args.dspan, args.dstep, cadence_interp)
+	segname = 'magnetogram.fits'
 else:
-	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.ic_45s/keys_new_swan/keys-%Y.fits'
-	outfile_fmt = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/solar_orbiter/data/%d_dspan_{}_dstep_{}_dt_{}_flows_1,5deg_gran_4k.hdf5'.format(args.dspan, args.dstep, cadence_interp)
-	segname = 'continuum.fits'
+	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.m_45s/keys_new_swan/keys-%Y.fits'
+	outfile_fmt = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/solar_orbiter/data/%d_dspan_{}_dstep_{}_dt_{}_flows_5deg_mag_hmi.hdf5'.format(args.dspan, args.dstep, cadence_interp)
+	segname = 'magnetogram.fits'
 
 date_shift = timedelta(minutes=0)
 
