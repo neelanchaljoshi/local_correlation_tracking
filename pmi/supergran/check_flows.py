@@ -1,9 +1,12 @@
-# %%
+# %% imports
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py
 from scipy.ndimage import gaussian_filter
-# %%
+import glob
+from astropy.table import Table
+from datetime import datetime
+# %% Functions
 # Load the data
 def load_file(path):
     f = h5py.File(path)
@@ -18,8 +21,6 @@ def get_data_arrays_from_file(path):
 
 def smooth_2d_gaussian(Z, sigma=1):
     return gaussian_filter(Z, sigma=sigma, mode='constant', cval=0)
-# %%
-
 
 def remove_x_fit(data, x, order=1, average_over_y=True):
     """
@@ -179,84 +180,105 @@ def compute_los_velocity_lonlat(utheta, uphi, longitude, latitude, B0):
 
     return v_los
 
-# %%
+# %% Load files
 
 # path = "/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/data/2018_5_dspan_60_dstep_30_dt_60_sg_flows_010_res_2deg_save_ccf_gran_40lat_0lon_4k.hdf5"
-path = "/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/data/2018_5_dspan_60_dstep_30_dt_60_sg_flows_010_res_2deg_save_ccf_gran_40lat_0lon_carr_tracked_4k.hdf5"
-# path = '/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/data/2018_5_dspan_60_dstep_30_dt_60_sg_flows_010_res_1,5deg_save_ccf_gran_40lat_0lon_carr_tracked_4k.hdf5'
-data = get_data_arrays_from_file(path)
+# path = "/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/data/2018_5_dspan_60_dstep_30_dt_60_sg_flows_010_res_2deg_save_ccf_gran_40lat_0lon_carr_tracked_4k.hdf5"
+path = '/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/data/2018_5_dspan_60_dstep_30_dt_60_sg_flows_010_res_1,5deg_save_ccf_gran_40lat_0lon_carr_tracked_4k.hdf5'
+# files = sorted(glob.glob('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/supergran/data/data_to_be_stitched_test_dspan_6/*.hdf5'))
+# files = sorted(glob.glob('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/supergran/data/data_to_be_stitched_test_dspan_90s/*.hdf5'))
+files = sorted(glob.glob('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/supergran/data/data_to_be_stitched_test/*.hdf5'))
+keys_2010 = Table.read('/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.v_45s/keys-2010.fits')
+# for file in files:
+#     data = get_data_arrays_from_file(file)
+#     print(f"Loaded {file} with uphi shape {data['uphi'].shape} and utheta shape {data['utheta'].shape}")
+#     # concatenate the uphi and utheta arrays along the time axis
+#     if 'uphi_all' not in locals():
+#         uphi_all = data['uphi']
+#         utheta_all = data['utheta']
+#         t_all = data['tstart']
+#     else:
+#         uphi_all = np.concatenate((uphi_all, data['uphi']), axis=0)
+#         utheta_all = np.concatenate((utheta_all, data['utheta']), axis=0)
+#         t_all = np.concatenate((t_all, data['tstart']), axis=0)
+f = h5py.File(path)
+uphi_all = f['uphi'][:]
+utheta_all = f['utheta'][:]
+t_all = f['tstart'][:]
+longitude1 = f['longitude'][:]
+latitude1 = f['latitude'][:]
 
-uphi_mean = np.nanmean(data['uphi'][0:3], axis=0)
-utheta_mean = np.nanmean(data['utheta'][0:3], axis=0)
 
-# Check the keys in the file
-print("Keys in the file:", data.keys())
+uphi_mean = np.nanmean(uphi_all, axis=0)
+utheta_mean = np.nanmean(utheta_all, axis=0)
+# longitude = data['longitude']
+# latitude = data['latitude']
+t_array_datetime = [datetime.strptime(str(t, 'utf-8'), '%Y.%m.%d_%H:%M:%S') for t in t_all]
+print(f"Total number of time steps: {uphi_all.shape[0]}")
+print(f"Shape of uphi_mean: {uphi_mean.shape}, Shape of utheta_mean: {utheta_mean.shape}")
+print(f"Longitude shape: {longitude.shape}, Latitude shape: {latitude.shape}")
+print(f"Time array length: {len(t_array_datetime)}")
 
-# Check the shape of the data arrays
-for key, value in data.items():
-    print(f"Shape of {key}: {value.shape}")
-print("The time start for this array is ", data['tstart'][0])
-
-# Remove large-scale trends from the flow data
-uphi_mean = remove_x_fit(uphi_mean, data['longitude'][:], order=1)
-uphi_mean = remove_y_fit(uphi_mean, data['latitude'][:], order=1)
-utheta_mean = remove_x_fit(utheta_mean, data['longitude'][:], order=1)
-utheta_mean = remove_y_fit(utheta_mean, data['latitude'][:], order=1)
-
-
-# Plot the data
+# %% Plot mean flows
+# Plot the mean flows
 fig, ax = plt.subplots(1, 2, figsize=(12, 6))
-ax[0].pcolormesh(data['longitude'], data['latitude'], uphi_mean, cmap = 'jet', vmax = 500, vmin = -500)
+ax[0].imshow(uphi_mean, cmap = 'bwr', vmax = 1000, vmin = -1000, origin='lower')
 ax[0].set_title(r'$u_\phi$')
-ax[1].pcolormesh(data['longitude'], data['latitude'], utheta_mean, cmap = 'jet', vmax = 500, vmin = -500)
+# ax[0].set_xlim([-4, 4])
+# ax[0].set_ylim([36, 44])
+ax[1].imshow(utheta_mean, cmap = 'bwr', vmax = 1000, vmin = -1000, origin='lower')
 ax[1].set_title(r'$u_\theta$')
-
-
-
-
-# %%
-lat_rad = np.radians(data['latitude'][:])
-lon_rad = np.radians(data['longitude'][:])
-B0 = np.deg2rad(-2.65)  # Assuming B0 is 0 radians for simplicity
-# %%
-# testing the compute_los_velocity_lonlat function
-vlos_test2 = compute_los_velocity_lonlat(utheta_mean, uphi_mean, data['longitude'], data['latitude'], B0)
-# tesing the vlos_from_u function
-# vlos_test2 = vlos_from_u(lat_rad[:, np.newaxis], lon_rad[np.newaxis, :], B0, utheta_mean, uphi_mean, u_r=None, away_positive=False)
-# %%
-# Remove mean from vlos
-# vlos_test2 -= np.nanmean(vlos_test2)
-# plot vlos_test2
-fig, ax = plt.subplots(figsize=(8, 6))
-im = ax.pcolormesh(data['longitude'][:], data['latitude'][:], vlos_test2, cmap='jet', vmin=-500, vmax=500)
-ax.set_title('LOS Velocity from compute_los_velocity_lonlat')
-ax.set_xlabel('Longitude (degrees)')
-ax.set_ylabel('Latitude (degrees)')
-ax.set_xlim(-10, 10)
-ax.set_ylim(30, 50)
-cbar = plt.colorbar(im, ax=ax, label='LOS Velocity (m/s)')
-plt.show()
-
-# %%
-vlos_test2 = vlos_test2 - np.nanmean(vlos_test2)
-x = np.arange(vlos_test2.shape[1])  # x-coordinates (columns)
-y = np.arange(vlos_test2.shape[0])  # y-coordinates (rows)
-vlos_test2 = remove_x_fit(vlos_test2, x, order=1, average_over_y=True)
-vlos_test2 = remove_y_fit(vlos_test2, y, order=1)
-vlos_test2 = smooth_2d_gaussian(vlos_test2, sigma=1.4)
-# vlos_test2 = smooth_2d_gaussian(vlos_test2, sigma=1.4)
-# %%
-# plot vlos_test2 again
-fig, ax = plt.subplots(figsize=(8, 6))
-im = ax.pcolormesh(data['longitude'][:], data['latitude'][:], vlos_test2, cmap='jet', vmin=-400, vmax=400)
-ax.set_title('LOS Velocity from compute_los_velocity_lonlat (trend removed)')
-ax.set_xlabel('Longitude (degrees)')
-ax.set_ylabel('Latitude (degrees)')
-ax.set_xlim(-10, 10)
-ax.set_ylim(30, 50)
-cbar = plt.colorbar(im, ax=ax, label='LOS Velocity (m/s)')
+# ax[1].set_xlim([-4, 4])
+# ax[1].set_ylim([36, 44])
 plt.show()
 # %%
-# save the vlos_test2 array to a npy file
-# np.save('vlos_test2.npy', vlos_test2)
+# Compute the LOS velocity from the mean flows for each uphi and utheta
+for i in range(uphi_all.shape[0]):
+    dI = -0.08
+    t_ref_b0 = datetime(2010, 6, 7, 14, 17, 20)
+    # t_idx = np.where(keys_2010['t_rec'] == t_array_datetime[i].strftime('%Y.%m.%d_%H:%M:%S_TAI'))[0][0]
+    print(t_array_datetime[i])
+    # print(t_idx)
+    t_rec = datetime.strptime(keys_2010['t_rec'][i], '%Y.%m.%d_%H:%M:%S_TAI')
+    dt_b0 = (t_rec-t_ref_b0).total_seconds()/86400./365.25
+
+    # dB = keys_2010['crlt_obs'][t_idx] + dI*np.sin(2*np.pi*dt_b0)
+    dB = 0
+    v_los = compute_los_velocity_lonlat(utheta_all[i], uphi_all[i], longitude, latitude, B0=np.deg2rad(dB))
+    # smooth the vlos
+    # v_los = smooth_2d_gaussian(v_los, sigma=1.63*3)
+    print(v_los.shape)
+    if 'v_los_all' not in locals():
+        v_los_all = v_los[np.newaxis, :, :]
+    else:
+        v_los_all = np.concatenate((v_los_all, v_los[np.newaxis, :, :]), axis=0)
+v_los_mean = np.nanmean(v_los_all, axis=0)
+fig, ax = plt.subplots(figsize=(6, 6))
+im = ax.imshow(v_los_mean, cmap = 'jet', vmax = 1000, vmin = -1000, origin='lower')
+ax.set_title(r'$v_{los}$ from mean flows')
+# ax.set_xlim([-4, 4])
+# ax.set_ylim([36, 44])
+fig.colorbar(im, ax=ax, label='v_los (m/s)')
+plt.show()
+# %%
+# Remove avg from the img
+# Smooth the mean v_los
+#
+v_los_mean = v_los_mean - np.nanmean(v_los_mean)
+# Remove x and y fits
+x = np.arange(v_los_mean.shape[1])  # x-coordinates (columns)
+y = np.arange(v_los_mean.shape[0])
+v_los_detrended = remove_x_fit(v_los_mean, x, order=1, average_over_y=True)
+v_los_detrended = remove_y_fit(v_los_detrended, y, order=1)
+
+fig, ax = plt.subplots(figsize=(8, 6))
+im = ax.pcolormesh(longitude, latitude, v_los_detrended, cmap = 'jet', vmax = 500, vmin = -500)
+ax.set_title(r'Detrended $v_{los}$ from mean flows')
+# ax.set_xlim([-4, 4])
+# ax.set_ylim([36, 44])
+fig.colorbar(im, ax=ax, label='v_los (m/s)')
+plt.show()
+# %% Save the detrended v_los
+np.savez('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/supergran/data/detrended_vlos/detrended_vlos_from_lct_mean_flows_dspan_15min.npz', v_los_detrended=v_los_detrended, longitude=longitude, latitude=latitude)
+
 # %%
