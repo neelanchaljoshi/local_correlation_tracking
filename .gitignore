@@ -12,5 +12,6 @@ logs/
 data/
 *_data/
 *.tgz
+*.npz
 pdfs/
 **/__pycache__/
