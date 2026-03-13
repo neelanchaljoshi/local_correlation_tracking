@@ -148,11 +148,11 @@ def plot_ps_for_each_m(m, lat, freq):
             ax.plot(freq, line_data[idx][0], color='black', linewidth = 1.5, label = 'range average')
             # Take 4 year average for line_data[idx][0]
             arr = line_data[idx][0]
-            n = len(arr) // 4 * 4  # largest multiple of 4
-            result = arr[:n].reshape(-1, 4).mean(axis=1)
+            n = len(arr) // 3 * 3  # largest multiple of 3
+            result = arr[:n].reshape(-1, 3).mean(axis=1)
             arr = freq
-            freq_av = arr[:n].reshape(-1, 4).mean(axis=1)
-            ax.plot(freq_av, result, color='cyan', linewidth = 1.0, label = '4 year average')
+            freq_av = arr[:n].reshape(-1, 3).mean(axis=1)
+            ax.plot(freq_av, result, color='cyan', linewidth = 1.0, label = '3 year average')
             if first_line_ax is None:
                 first_line_ax = ax
 
