@@ -8,14 +8,16 @@ import h5py
 
 # %%
 # Load the data
-f = h5py.File('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/2018_dspan_360_dstep_30_dt_45_ccf_width_test_5deg_gran_4k.hdf5')
+f = h5py.File('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/2018_dspan_360_dstep_30_dt_45_ccf_width_test_5deg_gran_4k_lorentzian.hdf5')
+t = f['tstart'][:]
+print('Time range: {} to {}'.format(t[0], t[-1]))
 # f = h5py.File('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/2018_dspan_360_dstep_30_dt_45_ccf_widths_5deg_mag_4k.hdf5')
 ccf_width_x_gran = f['ccf_width_x'][:]
 ccf_width_y_gran = f['ccf_width_y'][:]
 lons = f['longitude'][:]
 lats = f['latitude'][:]
 
-f = h5py.File('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/2018_dspan_360_dstep_120_dt_45_ccf_widths_5deg_mag_4k.hdf5')
+f = h5py.File('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/2018_dspan_360_dstep_120_dt_45_ccf_widths_5deg_mag_4k_lorentzian.hdf5')
 ccf_width_x_mag = f['ccf_width_x'][:]
 ccf_width_y_mag = f['ccf_width_y'][:]
 
@@ -28,6 +30,7 @@ ccf_width_x_gran = ccf_width_x_gran * deg_to_km[:, np.newaxis] / 1000.0  # Conve
 ccf_width_y_gran = ccf_width_y_gran * deg_to_km[:, np.newaxis] / 1000.0  # Convert to Mm
 ccf_width_x_mag = ccf_width_x_mag * deg_to_km[:, np.newaxis] / 1000.0  # Convert to Mm
 ccf_width_y_mag = ccf_width_y_mag * deg_to_km[:, np.newaxis] / 1000.0  # Convert to Mm
+
 # %%
 # Plot the data
 import numpy as np
@@ -71,25 +74,26 @@ mag_norm = BoundaryNorm(mag_bounds, mag_cmap.N)
 fig, axs = plt.subplots(2, 2, figsize=(12, 10))
 
 # Granulation-based plots
-c1 = axs[0, 0].pcolormesh(lons, lats, ccf_width_x_mag[0], shading='auto', cmap=mag_cmap, norm=mag_norm)
-fig.colorbar(c1, ax=axs[0, 0], orientation='vertical', label = 'Width (Mm)')
+c1 = axs[0, 0].pcolormesh(lons, lats, ccf_width_x_mag[0], shading='nearest', rasterized=True, cmap=mag_cmap, norm=mag_norm)
+fig.colorbar(c1, ax=axs[0, 0], orientation='vertical', label='Width (Mm)')
 axs[0, 0].set_title('CCF Width X (Magnetogram-based LCT)')
 
-c2 = axs[0, 1].pcolormesh(lons, lats, ccf_width_y_mag[0], shading='auto', cmap=mag_cmap, norm=mag_norm)
-fig.colorbar(c2, ax=axs[0, 1], orientation='vertical', label = 'Width (Mm)')
+c2 = axs[0, 1].pcolormesh(lons, lats, ccf_width_y_mag[0], shading='nearest', rasterized=True, cmap=mag_cmap, norm=mag_norm)
+fig.colorbar(c2, ax=axs[0, 1], orientation='vertical', label='Width (Mm)')
 axs[0, 1].set_title('CCF Width Y (Magnetogram-based LCT)')
 
 # Magnetogram-based plots
-c3 = axs[1, 0].pcolormesh(lons, lats, ccf_width_x_gran[0], shading='auto', cmap=gran_cmap, norm=gran_norm)
-fig.colorbar(c3, ax=axs[1, 0], orientation='vertical', label = 'Width (Mm)')
+c3 = axs[1, 0].pcolormesh(lons, lats, ccf_width_x_gran[0], shading='nearest', rasterized=True, cmap=gran_cmap, norm=gran_norm)
+fig.colorbar(c3, ax=axs[1, 0], orientation='vertical', label='Width (Mm)')
 axs[1, 0].set_title('CCF Width X (Granulation-based LCT)')
 
-c4 = axs[1, 1].pcolormesh(lons, lats, ccf_width_y_gran[0], shading='auto', cmap=gran_cmap, norm=gran_norm)
-fig.colorbar(c4, ax=axs[1, 1], orientation='vertical', label = 'Width (Mm)')
+c4 = axs[1, 1].pcolormesh(lons, lats, ccf_width_y_gran[0], shading='nearest', rasterized=True, cmap=gran_cmap, norm=gran_norm)
+fig.colorbar(c4, ax=axs[1, 1], orientation='vertical', label='Width (Mm)')
 axs[1, 1].set_title('CCF Width Y (Granulation-based LCT)')
 
 plt.tight_layout()
 plt.show()
+
 # %%
 # Set the seaborn style
 sns.set(style="ticks")
@@ -102,44 +106,186 @@ lat_ticks = np.arange(-90, 91, 30)
 lon_ticks = np.arange(-90, 91, 30)
 
 # Granulation-based plots (top panel)
-c3 = axs[0, 0].pcolormesh(lons, lats, ccf_width_x_gran[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+c3 = axs[0, 0].pcolormesh(lons, lats, ccf_width_x_gran[0], shading='nearest', rasterized=True, cmap="gist_ncar", vmin=0, vmax=25)
 fig.colorbar(c3, ax=axs[0, 0], orientation='vertical', label='Width (Mm)')
-axs[0, 0].set_title('CCF Width X (Granulation-based LCT)', fontsize=16)  # Increased font size
+axs[0, 0].set_title('CCF Width X (Granulation-based LCT)', fontsize=16)
 axs[0, 0].set_xticks(lon_ticks)
 axs[0, 0].set_yticks(lat_ticks)
-axs[0, 0].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
-axs[0, 0].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
-axs[0, 0].tick_params(axis='both', labelsize=14)  # Increased tick label size
+axs[0, 0].set_xlabel(r'Longitude [$\degree$]', fontsize=16)
+axs[0, 0].set_ylabel(r'Latitude [$\degree$]', fontsize=16)
+axs[0, 0].tick_params(axis='both', labelsize=14)
 
-c4 = axs[0, 1].pcolormesh(lons, lats, ccf_width_y_gran[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+c4 = axs[0, 1].pcolormesh(lons, lats, ccf_width_y_gran[0], shading='nearest', rasterized=True, cmap="gist_ncar", vmin=0, vmax=25)
 fig.colorbar(c4, ax=axs[0, 1], orientation='vertical', label='Width (Mm)')
-axs[0, 1].set_title('CCF Width Y (Granulation-based LCT)', fontsize=16)  # Increased font size
+axs[0, 1].set_title('CCF Width Y (Granulation-based LCT)', fontsize=16)
 axs[0, 1].set_xticks(lon_ticks)
 axs[0, 1].set_yticks(lat_ticks)
-axs[0, 1].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
-axs[0, 1].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
-axs[0, 1].tick_params(axis='both', labelsize=14)  # Increased tick label size
+axs[0, 1].set_xlabel(r'Longitude [$\degree$]', fontsize=16)
+axs[0, 1].set_ylabel(r'Latitude [$\degree$]', fontsize=16)
+axs[0, 1].tick_params(axis='both', labelsize=14)
 
 # Magnetogram-based plots (bottom panel)
-c1 = axs[1, 0].pcolormesh(lons, lats, ccf_width_x_mag[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+c1 = axs[1, 0].pcolormesh(lons, lats, ccf_width_x_mag[0], shading='nearest', rasterized=True, cmap="gist_ncar", vmin=0, vmax=25)
 fig.colorbar(c1, ax=axs[1, 0], orientation='vertical', label='Width (Mm)')
-axs[1, 0].set_title('CCF Width X (Magnetogram-based LCT)', fontsize=16)  # Increased font size
+axs[1, 0].set_title('CCF Width X (Magnetogram-based LCT)', fontsize=16)
 axs[1, 0].set_xticks(lon_ticks)
 axs[1, 0].set_yticks(lat_ticks)
-axs[1, 0].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
-axs[1, 0].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
-axs[1, 0].tick_params(axis='both', labelsize=14)  # Increased tick label size
+axs[1, 0].set_xlabel(r'Longitude [$\degree$]', fontsize=16)
+axs[1, 0].set_ylabel(r'Latitude [$\degree$]', fontsize=16)
+axs[1, 0].tick_params(axis='both', labelsize=14)
 
-c2 = axs[1, 1].pcolormesh(lons, lats, ccf_width_y_mag[0], shading='auto', cmap="gist_ncar", vmin=0, vmax=25)
+c2 = axs[1, 1].pcolormesh(lons, lats, ccf_width_y_mag[0], shading='nearest', rasterized=True, cmap="gist_ncar", vmin=0, vmax=25)
 fig.colorbar(c2, ax=axs[1, 1], orientation='vertical', label='Width (Mm)')
-axs[1, 1].set_title('CCF Width Y (Magnetogram-based LCT)', fontsize=16)  # Increased font size
+axs[1, 1].set_title('CCF Width Y (Magnetogram-based LCT)', fontsize=16)
 axs[1, 1].set_xticks(lon_ticks)
 axs[1, 1].set_yticks(lat_ticks)
-axs[1, 1].set_xlabel(r'Longitude [$\degree$]', fontsize=16)  # Increased font size
-axs[1, 1].set_ylabel(r'Latitude [$\degree$]', fontsize=16)  # Increased font size
-axs[1, 1].tick_params(axis='both', labelsize=14)  # Increased tick label size
+axs[1, 1].set_xlabel(r'Longitude [$\degree$]', fontsize=16)
+axs[1, 1].set_ylabel(r'Latitude [$\degree$]', fontsize=16)
+axs[1, 1].tick_params(axis='both', labelsize=14)
+
+plt.tight_layout()
+# plt.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/ccf_widths_comparison.pdf')
+plt.show()
+# %%
+# %%
+# %%
+# %%
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import h5py
+
+plt.rcParams.update({'font.size': 12})
+plt.rcParams['font.family'] = 'sans-serif'
+
+# %%
+# Load data
+f = h5py.File('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/2018_dspan_360_dstep_30_dt_45_ccf_width_test_5deg_gran_4k_lorentzian.hdf5')
+t = f['tstart'][:]
+print('Time range: {} to {}'.format(t[0], t[-1]))
+
+ccf_width_x_gran = f['ccf_width_x'][:]
+ccf_width_y_gran = f['ccf_width_y'][:]
+lons = f['longitude'][:]
+lats = f['latitude'][:]
+
+f = h5py.File('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/2018_dspan_360_dstep_120_dt_45_ccf_widths_5deg_mag_4k_lorentzian.hdf5')
+ccf_width_x_mag = f['ccf_width_x'][:]
+ccf_width_y_mag = f['ccf_width_y'][:]
+
+# %%
+# Convert degrees to Mm
+R_sun = 696340.0
+lat_rad = np.radians(lats)
+deg_to_km = (np.pi/180) * R_sun * np.cos(lat_rad)
+
+ccf_width_x_gran = ccf_width_x_gran * deg_to_km[:,None] / 1000.0
+ccf_width_y_gran = ccf_width_y_gran * deg_to_km[:,None] / 1000.0
+ccf_width_x_mag = ccf_width_x_mag * deg_to_km[:,None] / 1000.0
+ccf_width_y_mag = ccf_width_y_mag * deg_to_km[:,None] / 1000.0
+
+# %%
+# Clean NaNs
+ccf_width_x_gran = np.nan_to_num(ccf_width_x_gran)
+ccf_width_y_gran = np.nan_to_num(ccf_width_y_gran)
+ccf_width_x_mag = np.nan_to_num(ccf_width_x_mag)
+ccf_width_y_mag = np.nan_to_num(ccf_width_y_mag)
+
+# %%
+# Mask values near zero -> these will be white
+threshold = 0.01
+
+ccf_width_x_gran = np.ma.masked_where(np.abs(ccf_width_x_gran) < threshold, ccf_width_x_gran)
+ccf_width_y_gran = np.ma.masked_where(np.abs(ccf_width_y_gran) < threshold, ccf_width_y_gran)
+ccf_width_x_mag = np.ma.masked_where(np.abs(ccf_width_x_mag) < threshold, ccf_width_x_mag)
+ccf_width_y_mag = np.ma.masked_where(np.abs(ccf_width_y_mag) < threshold, ccf_width_y_mag)
+
+# %%
+# Colormap
+cmap = plt.cm.turbo.copy()
+cmap.set_bad('white')   # masked values appear white
+
+# %%
+sns.set(style="ticks")
+
+fig, axs = plt.subplots(2,2, figsize=(12,10))
+
+lat_ticks = np.arange(-90,91,30)
+lon_ticks = np.arange(-90,91,30)
+
+# ---- Granulation X ----
+c1 = axs[0,0].pcolormesh(
+    lons, lats, ccf_width_x_gran[0],
+    shading='nearest',
+    cmap=cmap,
+    vmin=0,
+    vmax=25,
+    rasterized=True
+)
+
+cb1 = fig.colorbar(c1, ax=axs[0,0])
+cb1.set_label('Width (Mm)')
+cb1.set_ticks([0,5,10,15,20,25])
+
+axs[0,0].set_title('CCF Width X (Granulation-based LCT)', fontsize=16)
+
+# ---- Granulation Y ----
+c2 = axs[0,1].pcolormesh(
+    lons, lats, ccf_width_y_gran[0],
+    shading='nearest',
+    cmap=cmap,
+    vmin=0,
+    vmax=25,
+    rasterized=True
+)
+
+cb2 = fig.colorbar(c2, ax=axs[0,1])
+cb2.set_label('Width (Mm)')
+cb2.set_ticks([0,5,10,15,20,25])
+
+axs[0,1].set_title('CCF Width Y (Granulation-based LCT)', fontsize=16)
+
+# ---- Magnetogram X ----
+c3 = axs[1,0].pcolormesh(
+    lons, lats, ccf_width_x_mag[0],
+    shading='nearest',
+    cmap=cmap,
+    vmin=0,
+    vmax=25,
+    rasterized=True
+)
+
+cb3 = fig.colorbar(c3, ax=axs[1,0])
+cb3.set_label('Width (Mm)')
+cb3.set_ticks([0,5,10,15,20,25])
+
+axs[1,0].set_title('CCF Width X (Magnetogram-based LCT)', fontsize=16)
+
+# ---- Magnetogram Y ----
+c4 = axs[1,1].pcolormesh(
+    lons, lats, ccf_width_y_mag[0],
+    shading='nearest',
+    cmap=cmap,
+    vmin=0,
+    vmax=25,
+    rasterized=True
+)
+
+cb4 = fig.colorbar(c4, ax=axs[1,1])
+cb4.set_label('Width (Mm)')
+cb4.set_ticks([0,5,10,15,20,25])
+
+axs[1,1].set_title('CCF Width Y (Magnetogram-based LCT)', fontsize=16)
+# Axis formatting
+for ax in axs.flatten():
+    ax.set_xticks(lon_ticks)
+    ax.set_yticks(lat_ticks)
+    ax.set_xlabel(r'Longitude [$\degree$]')
+    ax.set_ylabel(r'Latitude [$\degree$]')
+    ax.tick_params(labelsize=12)
 
 plt.tight_layout()
 plt.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/ccf_widths_comparison.pdf')
+
 plt.show()
 # %%
