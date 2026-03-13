@@ -3,11 +3,11 @@
 #SBATCH --qos=swan_default
 #SBATCH --account=seismo
 #SBATCH --mem=10G
-#SBATCH --time=1-00:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --mail-type=FAIL,INVALID_DEPEND,REQUEUE,STAGE_OUT,END
 #SBATCH --mail-user=joshin@mps.mpg.de
 #SBATCH --output=logs/%x_slurm%A_%a.log
-#SBATCH --job-name=2017_360_030_diff_rot_5deg_gran_2k
+#SBATCH --job-name=2017_360_030_diff_rot_5deg_mag_4k
 #SBATCH --cpus-per-task=1
 ##SBATCH --exclude=swan[18,27,28]
 #SBATCH --array=0-364
@@ -47,8 +47,8 @@ export TIME="\nET %E | CPU %P | Max %M KB max"
 
 yr=${SLURM_JOB_NAME:0:4}
 dspan=360
-dstep=30
-downsample="--downsample"
+dstep=60
+downsample=""
 interpolate="--interp"
 
 get_start_stop_from_index(){
@@ -70,4 +70,4 @@ dstop="${start_stop[1]}"
 echo $dstart
 echo $dstop
 
-env time python -W ignore diff_rot_single_thread.py $dstart $dstop $dspan $dstep $downsample $interpolate -l debug
+env time python -W ignore diff_rot_single_thread_mag.py $dstart $dstop $dspan $dstep $downsample $interpolate -l debug

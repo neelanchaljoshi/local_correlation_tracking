@@ -147,6 +147,8 @@ def get_ux_uy_ellipsoid(ccf_av, grid_len, patch_size, pixel_size, R_sun, ntry = 
 			coeff_arr.append([i**2, j**2, i, j, i*j, 1])
 
 		coeff_array = np.array(coeff_arr)
+		if coeff_array.shape[0] != val_arr.shape[0]:
+			return np.nan, np.nan, np.nan, np.nan
 		p, res, rnk, s = lstsq(coeff_array, val_arr)
 
 		a,b,c,d,e,f = p
@@ -221,7 +223,7 @@ nthr = int(os.getenv('OMP_NUM_THREADS', default=1))
 date_fmt = '%Y.%m.%d_%H:%M:%S_TAI'
 
 # --- arguments ---
-parser = argparse.ArgumentParser(description='compute flows from granulation tracking')
+parser = argparse.ArgumentParser(description='compute flows from magnetic feature tracking')
 parser.add_argument('start', type=str, help=f'start time %%Y.%%m.%%d_%%H:%%M:%%S_TAI')
 parser.add_argument('stop', type=str, help=f'stop time (excluded) %%Y.%%m.%%d_%%H:%%M:%%S_TAI')
 parser.add_argument('dspan', type=int, help='time span in minutes')
@@ -257,7 +259,7 @@ begtime = datetime.now()
 # %% === config: main ===
 ## input parameters
 dspan = timedelta(minutes = args.dspan)
-cadence = 45 # [s] int time interval between two images used for cross-correlation
+cadence = 1800 # [s] int time interval between two images used for cross-correlation
 cadence_keys = 45 # from the data series
 if interp:
 	cadence_interp = 60 # [s] int
@@ -272,12 +274,12 @@ nt = int(nt)
 
 if downsample:
 	resolution = '2k'
-	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.ic_45s/keys_all_bad_excluded/keys_2k_2k/keys-%Y-2k.fits'
+	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.m_45s/keys_all_bad_excluded/keys_2k_2k/keys-%Y-2k.fits'
 else:
 	resolution = '4k'
-	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.ic_45s/keys_new_swan/keys-%Y.fits'
-outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/data_{resolution}_{dstart.year}/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_diff_rot_5deg_gran_{resolution}.hdf5'
-segname = 'continuum.fits'
+	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.m_45s/keys_new_swan/keys-%Y.fits'
+outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/data_mag/data_{resolution}_{dstart.year}/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_diff_rot_5deg_mag_{resolution}.hdf5'
+segname = 'magnetogram.fits'
 
 ## mapping parameters
 dI = -0.08
@@ -341,8 +343,8 @@ psf_pmi = airy_disk_psf((psf_size, psf_size), radius_pmi)
 psf_rel = fftconvolve(psf_pmi, psf_hmi[::-1, ::-1], mode='same')
 
 ## output parameters
-clatarr = np.arange(-60, 61, 2.5)
-clngarr = np.arange(-60, 61, 2.5)
+clatarr = np.arange(-90, 91, 2.5)
+clngarr = np.arange(-90, 91, 2.5)
 nlng = len(clngarr)
 nlat = len(clatarr)
 # clngarr = np.linspace(-90, +90, nlng)
