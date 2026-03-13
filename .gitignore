@@ -10,5 +10,7 @@ __pycache__
 *.h5
 logs/
 data/
+*_data/
+*.tgz
 pdfs/
 **/__pycache__/
