@@ -65,17 +65,19 @@ warnings.filterwarnings("ignore")
 plt.rcParams.update({
     "figure.facecolor":    "white",   "axes.facecolor":      "white",
     "axes.edgecolor":      "#333333", "axes.labelcolor":     "#222222",
-    "axes.titlecolor":     "#111111", "axes.linewidth":      0.8,
+    "axes.titlecolor":     "#111111", "axes.linewidth":      1.0,
     "axes.grid":           True,      "grid.color":          "#dddddd",
     "grid.linewidth":      0.5,       "grid.linestyle":      "--",
     "xtick.color":         "#333333", "ytick.color":         "#333333",
     "xtick.direction":     "in",      "ytick.direction":     "in",
-    "xtick.major.size":    3.5,       "ytick.major.size":    3.5,
-    "xtick.minor.size":    2.0,       "ytick.minor.size":    2.0,
+    "xtick.major.size":    4.0,       "ytick.major.size":    4.0,
+    "xtick.minor.size":    2.5,       "ytick.minor.size":    2.5,
+    "xtick.major.width":   0.8,       "ytick.major.width":   0.8,
     "text.color":          "#222222", "font.family":         "sans-serif",
-    "font.size":           9,         "axes.labelsize":      9,
-    "axes.titlesize":      10,        "legend.fontsize":     8,
+    "font.size":           12,        "axes.labelsize":      13,
+    "axes.titlesize":      13,        "legend.fontsize":     11,
     "legend.framealpha":   0.9,       "legend.edgecolor":    "#cccccc",
+    "legend.borderpad":    0.5,
     "figure.dpi":          150,       "savefig.dpi":         300,
     "savefig.facecolor":   "white",   "savefig.bbox":        "tight",
     "image.origin":        "lower",   "image.interpolation": "nearest",
@@ -89,7 +91,6 @@ CGREY  = "#7f7f7f"   # grey       — neutral lines
 CADENCE_COLORS = ["#d62728", "#ff7f0e", "#9467bd"]  # one per cadence: 90s, 360s, 900s
 
 R_SUN_MM    = 695.7   # Mm
-SG_SCALE_MM = 30.0    # expected supergranulation dominant scale [Mm]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -242,7 +243,6 @@ def odr_fit(ref, test, sx=None, sy=None):
     dict with keys:
         slope     : ODR slope  (= amplitude ratio corrected for errors in both)
         intercept : ODR intercept
-        r_odr     : ODR correlation coefficient (from residual variance)
         slope_err : 1-sigma uncertainty on slope
         int_err   : 1-sigma uncertainty on intercept
     """
@@ -264,20 +264,9 @@ def odr_fit(ref, test, sx=None, sy=None):
     slope, intercept = result.beta
     slope_err, int_err = result.sd_beta
 
-    # ODR r: 1 - residual_var / total_var (analogous to R² but for ODR)
-    res  = y - (slope * x + intercept)
-    ss_res = np.sum(res**2)
-    ss_tot = np.sum((y - np.mean(y))**2)
-    r_odr  = float(np.sqrt(max(0, 1 - ss_res / ss_tot)))
-    # preserve sign from Pearson
-    r_sign, _ = pearsonr(x, y)
-    if r_sign < 0:
-        r_odr = -r_odr
-
     return {
         "slope":     float(slope),
         "intercept": float(intercept),
-        "r_odr":     r_odr,
         "slope_err": float(slope_err),
         "int_err":   float(int_err),
     }
@@ -356,7 +345,10 @@ def _metric_block(ref, test, pxMm, scale):
     """
     Compute all metrics comparing test field against ref field.
     ref and test are raw [m/s].
-    Returns a flat dict of scalars and arrays.
+
+    Pearson r and ODR are computed on raw (physical) fields — no normalisation —
+    so that amplitude differences are captured in the correlation metrics.
+    Normalised fields are still computed for PSD shape comparison and map plots.
     """
     ref_n  = normalise(ref)
     test_n = normalise(test)
@@ -365,39 +357,39 @@ def _metric_block(ref, test, pxMm, scale):
     _, psd_test_norm = compute_psd(test_n, pxMm)
     _, psd_ref_raw   = compute_psd(ref,    pxMm)
 
-    # ODR fits — raw and normalised
-    odr_raw  = odr_fit(ref,   test)
-    odr_norm = odr_fit(ref_n, test_n)
+    # ODR and Pearson on raw fields — preserves amplitude information
+    odr_raw = odr_fit(ref, test)
 
     return {
         # amplitude (raw)
-        "rmse_raw":        rmse(ref, test),
-        "bias_raw":        bias(ref, test),
-        "amplitude_ratio": amplitude_ratio(ref, test),
-        # ODR (raw) — slope = amplitude ratio corrected for errors in both
-        "odr_slope_raw":   odr_raw["slope"],
+        "rmse_raw":          rmse(ref, test),
+        "bias_raw":          bias(ref, test),
+        "amplitude_ratio":   amplitude_ratio(ref, test),
+        # ODR (raw) — slope and correlation on physical [m/s] fields
+        "odr_slope_raw":     odr_raw["slope"],
         "odr_slope_raw_err": odr_raw["slope_err"],
         "odr_intercept_raw": odr_raw["intercept"],
-        # structural (normalised)
-        "r":               pearson_r(ref_n, test_n),
-        "r_odr":           odr_norm["r_odr"],
-        "odr_slope_norm":  odr_norm["slope"],
-        "odr_slope_norm_err": odr_norm["slope_err"],
-        "ncc":             normalised_cross_correlation(ref_n, test_n),
-        "skill":           spatial_skill(ref_n, test_n),
-        "rmse_norm":       rmse(ref_n, test_n),
+        # Pearson r on raw fields
+        "r":                 pearson_r(ref, test),
+        # structural (normalised) — pattern-only metrics
+        "ncc":               normalised_cross_correlation(ref_n, test_n),
+        "skill":             spatial_skill(ref_n, test_n),
+        "rmse_norm":         rmse(ref_n, test_n),
         # PSD
-        "psd_raw":         psd_test_raw,
-        "psd_norm":        psd_test_norm,
-        "psd_ratio_raw":   np.where(psd_ref_raw  > 0,
-                                    psd_test_raw  / psd_ref_raw,  np.nan),
-        "psd_ratio_norm":  np.where(psd_ref_norm > 0,
-                                    psd_test_norm / psd_ref_norm, np.nan),
-        "psd_peak_raw":    psd_peak_scale(scale, psd_test_raw),
-        "psd_peak_norm":   psd_peak_scale(scale, psd_test_norm),
-        # normalised fields for plotting
-        "test_n":          test_n,
-        "residual_n":      test_n - ref_n,
+        "psd_raw":           psd_test_raw,
+        "psd_norm":          psd_test_norm,
+        "psd_ratio_raw":     np.where(psd_ref_raw  > 0,
+                                      psd_test_raw  / psd_ref_raw,  np.nan),
+        "psd_ratio_norm":    np.where(psd_ref_norm > 0,
+                                      psd_test_norm / psd_ref_norm, np.nan),
+        "psd_peak_raw":      psd_peak_scale(scale, psd_test_raw),
+        "psd_peak_norm":     psd_peak_scale(scale, psd_test_norm),
+        # raw fields for scatter and map plots
+        "test_raw":          test,
+        "residual_raw":      test - ref,
+        # normalised fields for pattern-only plots (PSD, skill, NCC)
+        "test_n":            test_n,
+        "residual_n":        test_n - ref_n,
     }
 
 
@@ -429,7 +421,7 @@ def compute_all(vlos_hmi_ref, vlos_hmi_cad, vlos_lct, lon, lat):
 
     pxMm   = postel_pixel_scale_Mm(lon, lat)
     labels = list(vlos_lct.keys())
-    m      = {"labels": labels, "pxMm": pxMm}
+    m      = {"labels": labels, "pxMm": pxMm, "lon": lon, "lat": lat}
 
     # ── HMI reference PSD ─────────────────────────────────────────────────
     ref_n = normalise(vlos_hmi_ref)
@@ -449,6 +441,7 @@ def compute_all(vlos_hmi_ref, vlos_hmi_cad, vlos_lct, lon, lat):
     # ── per-cadence metrics ────────────────────────────────────────────────
     # Three comparison types stored as nested dicts: m["avg"][label], etc.
     m["avg"]   = {}   # HMI_ref → HMI_cad  : averaging effect
+    m["avg_hmi_raw"] = {}   # raw HMI field at each cadence (ref for 90s)
     m["total"] = {}   # HMI_ref → LCT_cad  : total degradation
     m["lct"]   = {}   # HMI_cad → LCT_cad  : LCT tracking noise only
 
@@ -462,11 +455,14 @@ def compute_all(vlos_hmi_ref, vlos_hmi_cad, vlos_lct, lon, lat):
             # matched HMI cadence exists (360s, 900s)
             hmi_c = vlos_hmi_cad[label]
             m["avg"][label] = _metric_block(vlos_hmi_ref, hmi_c, pxMm, scale)
-            m["avg"][label]["hmi_cad_n"] = normalise(hmi_c)
+            m["avg"][label]["hmi_cad_n"]   = normalise(hmi_c)
+            m["avg"][label]["hmi_cad_raw"] = hmi_c
+            m["avg_hmi_raw"][label] = hmi_c
             m["lct"][label] = _metric_block(hmi_c, lct_c, pxMm, scale)
         else:
             # no matched HMI cadence (90s) — avg undefined, lct uses ref directly
             m["avg"][label] = None
+            m["avg_hmi_raw"][label] = vlos_hmi_ref   # ref itself is the best HMI at this cadence
             m["lct"][label] = _metric_block(vlos_hmi_ref, lct_c, pxMm, scale)
 
     return m
@@ -503,11 +499,7 @@ def _psd_fmt_ax(ax, ylabel, title, scale_min, scale_max):
     ax.set_xlabel("Spatial scale [Mm]", fontsize=9)
     ax.set_ylabel(ylabel, fontsize=9)
     ax.set_title(title, fontsize=9, pad=6)
-    if scale_min < SG_SCALE_MM < scale_max:
-        ax.axvline(SG_SCALE_MM, color=CGREY, lw=0.7, ls=":", zorder=0)
-        ax.text(SG_SCALE_MM, 1.01, f"SG ~{SG_SCALE_MM:.0f} Mm",
-                fontsize=6, ha="center", va="bottom", color=CGREY,
-                transform=ax.get_xaxis_transform())
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -516,66 +508,72 @@ def _psd_fmt_ax(ax, ylabel, title, scale_min, scale_max):
 
 def plot_vlos_maps(m, save=None):
     """
-    Grid of vlos maps (normalised).
-    Rows: HMI ref | HMI cadence-avg | LCT | residual HMI-cad vs ref |
-          residual LCT vs ref | residual LCT vs HMI-cad
-    Columns: one per cadence.
+    2D vlos maps in physical units [m/s] using pcolormesh on the Postel lon/lat grid.
+    Rows: HMI (matched cadence) | LCT | Residual (LCT - HMI).
+    Columns: one per LCT cadence. vmin/vmax fixed at +/-500 m/s.
     """
     labels = m["labels"]
+    lon    = m["lon"]
+    lat    = m["lat"]
     ncols  = len(labels)
-    nrows  = 6
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3.8 * ncols, 3.2 * nrows),
-                             gridspec_kw={"hspace": 0.3, "wspace": 0.1})
+    nrows  = 3
+    VMAX   = 500.0
+
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(5.2 * ncols, 4.8 * nrows),
+        constrained_layout=True,
+    )
     if ncols == 1:
         axes = axes[:, np.newaxis]
 
-    fig.suptitle("$v_{\\rm LOS}$ maps  (normalised)  |  columns = cadences",
-                 fontsize=11)
+    def _pcolor(ax, data, vmax, title=""):
+        im = ax.pcolormesh(lon, lat, data, cmap="RdBu_r",
+                           vmin=-vmax, vmax=vmax, shading="auto",
+                           rasterized=True)
+        if title:
+            ax.set_title(title, fontsize=13, fontweight="bold", pad=6)
+        ax.set_xlabel("Longitude [deg]", fontsize=12)
+        ax.set_ylabel("Latitude [deg]",  fontsize=12)
+        ax.tick_params(labelsize=11)
+        for sp in ax.spines.values():
+            sp.set_linewidth(0.8)
+        cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+        cb.set_label("m/s", fontsize=12)
+        cb.ax.tick_params(labelsize=10, direction="in")
+        cb.outline.set_linewidth(0.8)
+        return im
 
-    row_labels = [
-        "HMI ref",
-        "HMI cad-avg",
-        "LCT",
-        "Residual: HMI-cad − HMI-ref\n(averaging effect)",
-        "Residual: LCT − HMI-ref\n(total degradation)",
-        "Residual: LCT − HMI-cad\n(LCT noise only)",
-    ]
+    row_labels = ["HMI", "LCT", "Residual"]
 
-    for j, lbl in enumerate(labels):
-        hmi_ref_n  = m["vlos_hmi_ref_n"]
-        has_hmi_cad = m["avg"][lbl] is not None
-        hmi_cad_n  = m["avg"][lbl]["hmi_cad_n"] if has_hmi_cad else np.full_like(hmi_ref_n, np.nan)
-        lct_n      = m["total"][lbl]["test_n"]
+    for i, rl in enumerate(row_labels):
+        for j, lbl in enumerate(labels):
+            hmi_cad = m["avg_hmi_raw"][lbl]
+            lct_raw = m["total"][lbl]["test_raw"]
+            res_hmi = m["total"][lbl]["residual_raw"]
+            data    = [hmi_cad, lct_raw, res_hmi][i]
+            hmi_tag = f"HMI {lbl}" + (" (= ref)" if m["avg"][lbl] is None else "")
+            # title: row label + cadence on first row; row label only on first col otherwise
+            if i == 0:
+                title = f"{lbl}"
+            elif j == 0:
+                title = ""
+            else:
+                title = ""
+            if i == 2:
+                _pcolor(axes[i, j], data, 100, title)
+            else:
+                _pcolor(axes[i, j], data, VMAX, title)
+        # row label on left of each row via first-column ylabel
+        axes[i, 0].set_ylabel(f"{rl}\nLatitude [deg]", fontsize=12)
 
-        rows_data = [
-            hmi_ref_n,
-            hmi_cad_n if has_hmi_cad else np.full_like(hmi_ref_n, np.nan),
-            lct_n,
-            m["avg"][lbl]["residual_n"] if has_hmi_cad else np.full_like(hmi_ref_n, np.nan),
-            m["total"][lbl]["residual_n"],
-            m["lct"][lbl]["residual_n"],
-        ]
-
-        for i, (data, row_lbl) in enumerate(zip(rows_data, row_labels)):
-            ax = axes[i, j]
-            title = (f"{lbl}" if i == 0 else "") + (f"\n{row_lbl}" if j == 0 else "")
-            # first column: show row label; other columns: show cadence on top row only
-            col_title = lbl if i == 0 else ""
-            row_title = row_lbl if j == 0 else ""
-            full_title = col_title + ("\n" if col_title and row_title else "") + row_title
-            _imshow(ax, data, "RdBu_r", full_title, unit="arb.")
-
-    plt.tight_layout()
     if save: plt.savefig(save)
     plt.show()
 
 
 def plot_psd(m, save=None):
     """
-    2x3 PSD figure.
-    Row 0: raw PSD for all three comparisons.
-    Row 1: PSD ratio (test/ref) for all three comparisons.
-    Columns: (avg) HMI-cad/HMI-ref | (total) LCT/HMI-ref | (lct) LCT/HMI-cad
+    Raw PSD for HMI ref and each LCT cadence, single panel.
     """
     scale     = m["psd_scale"]
     sel       = (scale > 3.0) & np.isfinite(scale)
@@ -583,60 +581,39 @@ def plot_psd(m, save=None):
     scale_max = scale[sel].max()
     labels    = m["labels"]
 
-    comp_keys   = ["avg",       "total",        "lct"]
-    comp_titles = ["Averaging effect\n(HMI-cad / HMI-ref)",
-                   "Total degradation\n(LCT / HMI-ref)",
-                   "LCT noise only\n(LCT / HMI-cad)"]
-    ref_psds    = {
-        "avg":   m["psd_hmi_ref_norm"],
-        "total": m["psd_hmi_ref_norm"],
-        "lct":   None,   # reference is HMI-cad, varies per label — ratio already stored
-    }
+    fig, ax = plt.subplots(figsize=(8, 5.5), constrained_layout=True)
 
-    fig, axes = plt.subplots(2, 3, figsize=(15, 8),
-                             gridspec_kw={"hspace": 0.5, "wspace": 0.38})
-    fig.suptitle("Power Spectral Density (radial average) — three-way decomposition",
-                 fontsize=11, y=1.01)
+    ax.semilogy(scale[sel], m["psd_hmi_ref_raw"][sel],
+                color=CHMI, lw=2.5, ls="-", label="HMI ref (90s)", zorder=5)
 
-    for col, (ckey, ctitle) in enumerate(zip(comp_keys, comp_titles)):
-        # row 0 — normalised PSD
-        ax = axes[0, col]
-        ax.semilogy(scale[sel], m["psd_hmi_ref_norm"][sel],
-                    color=CHMI, lw=2.0, ls="-", label="HMI ref", zorder=5)
-        for i, lbl in enumerate(labels):
-            blk = m[ckey][lbl]
-            if blk is None:
-                continue
-            psd = blk["psd_norm"]
-            ax.semilogy(scale[sel], psd[sel],
-                        color=cadence_color(i), lw=1.3, ls="--",
-                        label=f"{lbl}")
-            pk = blk["psd_peak_norm"]
-            if np.isfinite(pk) and scale_min < pk < scale_max:
-                ax.axvline(pk, color=cadence_color(i), lw=0.7, ls=":", alpha=0.7)
-                ax.text(pk, 0.03, f"{pk:.0f}", fontsize=6,
-                        ha="center", va="bottom", color=cadence_color(i),
-                        transform=ax.get_xaxis_transform())
-        ax.legend(fontsize=7)
-        _psd_fmt_ax(ax, "PSD [arb.]", f"Norm. PSD — {ctitle}", scale_min, scale_max)
+    for i, lbl in enumerate(labels):
+        blk = m["total"][lbl]
+        if blk is None:
+            continue
+        ax.semilogy(scale[sel], blk["psd_raw"][sel],
+                    color=cadence_color(i), lw=2.0, ls="--", label=f"LCT  {lbl}")
+        pk = blk["psd_peak_raw"]
+        if np.isfinite(pk) and scale_min < pk < scale_max:
+            ax.axvline(pk, color=cadence_color(i), lw=1.0, ls=":", alpha=0.8)
+            ax.text(pk, ax.get_ylim()[0] * 1.5, f"{pk:.1f} Mm", color=cadence_color(i),
+                    fontsize=9, ha="center", va="bottom", rotation=90)
 
-        # row 1 — normalised PSD ratio
-        ax = axes[1, col]
-        ax.axhline(1, color=CGREY, lw=0.8, ls="--", label="Ratio = 1")
-        for i, lbl in enumerate(labels):
-            blk = m[ckey][lbl]
-            if blk is None:
-                continue
-            ratio = blk["psd_ratio_norm"]
-            ax.plot(scale[sel], ratio[sel],
-                    color=cadence_color(i), lw=1.3, label=f"{lbl}")
-        ax.set_ylim(0, 2.0)
-        ax.legend(fontsize=7)
-        _psd_fmt_ax(ax, "PSD ratio",
-                    f"Norm. PSD ratio — {ctitle}", scale_min, scale_max)
+    scale_ticks = np.array([3, 5, 10, 20, 30, 50, 100, 200])
+    scale_ticks = scale_ticks[(scale_ticks >= scale_min) & (scale_ticks <= scale_max)]
+    ax.set_xscale("log")
+    ax.invert_xaxis()
+    ax.set_xlim(scale_max * 1.05, scale_min * 0.95)
+    ax.set_xticks(scale_ticks)
+    ax.set_xticklabels([str(t) for t in scale_ticks], fontsize=12)
+    ax.tick_params(axis="x", which="minor", bottom=False)
+    ax.tick_params(axis="y", labelsize=12)
+    ax.set_xlabel("Spatial scale [Mm]", fontsize=13)
+    ax.set_ylabel(r"PSD  [(m/s)$^2$ Mm]", fontsize=13)
+    ax.legend(fontsize=12, framealpha=0.9)
+    for sp in ax.spines.values():
+        sp.set_linewidth(0.8)
 
-    plt.tight_layout()
-    if save: plt.savefig(save, bbox_inches="tight")
+    if save: plt.savefig(save)
     plt.show()
 
 
@@ -651,9 +628,8 @@ def plot_metric_vs_cadence(m, save=None):
     width   = 0.25
 
     metrics = [
-        ("r_odr",           "ODR $r$  (normalised)",               True,  1.0),
-        ("r",               "Pearson $r$  (normalised)",           True,  1.0),
-        ("skill",           "Spatial skill  (normalised)",         True,  1.0),
+        ("r",               "Pearson $r$  (raw)",                  True,  1.0),
+        ("skill",           "Spatial skill  (norm. pattern)",      True,  1.0),
         ("odr_slope_raw",   "ODR slope  (raw)",                    False, 1.0),
         ("rmse_raw",        "RMSE  [m s$^{-1}$]  (raw)",          False, None),
         ("amplitude_ratio", "Amplitude ratio  RMS  (raw)",         False, 1.0),
@@ -723,7 +699,6 @@ def plot_degradation_decomposition(m, save=None):
     width   = 0.5
 
     metrics = [
-        ("r_odr", "ODR $r$"),
         ("r",     "Pearson $r$"),
         ("skill", "Spatial skill"),
     ]
@@ -779,68 +754,78 @@ def plot_degradation_decomposition(m, save=None):
 
 def plot_scatter(m, save=None):
     """
-    Scatter plots for each cadence, each comparison type (3 rows x N cols).
-    Row 0: HMI-cad vs HMI-ref.
-    Row 1: LCT vs HMI-ref.
-    Row 2: LCT vs HMI-cad.
+    Scatter: 2 rows x N cadence columns.
+    Row 0: LCT vs HMI ref (90s).  Row 1: LCT vs matched HMI cadence.
+    ODR fit line and slope per panel.
     """
     labels = m["labels"]
     ncols  = len(labels)
-    fig, axes = plt.subplots(3, ncols, figsize=(4 * ncols, 11),
-                             gridspec_kw={"hspace": 0.45, "wspace": 0.3})
+    nrows  = 2
+
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(5.2 * ncols, 5.2 * nrows),
+        constrained_layout=True,
+    )
     if ncols == 1:
         axes = axes[:, np.newaxis]
-    fig.suptitle("Scatter: normalised $v_{\\rm LOS}$  (3 rows = 3 comparisons)",
-                 fontsize=11)
 
-    row_info = [
-        ("avg",   "HMI-ref", "HMI-cad"),
-        ("total", "HMI-ref", "LCT"),
-        ("lct",   "HMI-cad", "LCT"),
-    ]
+    def _scatter_panel(ax, ref_f, test_f, blk, color, xlabel, title=""):
+        idx = np.random.choice(len(ref_f), min(5000, len(ref_f)), replace=False)
+        ax.scatter(ref_f[idx], test_f[idx], s=2.0, alpha=0.25,
+                   color=color, rasterized=True)
+        lo = min(ref_f[idx].min(), test_f[idx].min())
+        hi = max(ref_f[idx].max(), test_f[idx].max())
+        ax.plot([lo, hi], [lo, hi], color=CGREY, lw=1.2, ls="--", label="1:1")
+        sl     = blk["odr_slope_raw"]
+        ic     = blk["odr_intercept_raw"]
+        sl_err = blk["odr_slope_raw_err"]
+        x_line = np.array([lo, hi])
+        ax.plot(x_line, sl * x_line + ic, color=color, lw=2.0, ls="-",
+                label=f"ODR: slope = {sl:.2f} +/- {sl_err:.2f}")
+        ax.legend(fontsize=11, loc="upper left", framealpha=0.9)
+        ax.set_xlabel(xlabel, fontsize=13)
+        ax.set_ylabel("LCT  [m/s]", fontsize=13)
+        ax.tick_params(labelsize=11)
+        ax.text(0.97, 0.05, f"r = {blk['r']:.3f}",
+                transform=ax.transAxes, fontsize=11,
+                ha="right", va="bottom",
+                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#cccccc", alpha=0.9))
+        for sp in ax.spines.values():
+            sp.set_linewidth(0.8)
+        if title:
+            ax.set_title(title, fontsize=13, fontweight="bold", pad=6)
+
+    row_xlabels = ["HMI ref (90s)  [m/s]", "HMI cad  [m/s]"]
 
     for j, lbl in enumerate(labels):
-        for row, (ckey, ref_lbl, test_lbl) in enumerate(row_info):
-            ax = axes[row, j]
-            if ckey == "avg":
-                ref_f  = m["vlos_hmi_ref_n"].ravel()
-                if m["avg"][lbl] is None:
-                    ax.set_title(f"{lbl}  — no matched HMI cadence", fontsize=8)
-                    ax.axis("off")
-                    continue
-                test_f = m["avg"][lbl]["hmi_cad_n"].ravel()
-            elif ckey == "total":
-                ref_f  = m["vlos_hmi_ref_n"].ravel()
-                test_f = m["total"][lbl]["test_n"].ravel()
-            else:
-                ref_f  = (m["avg"][lbl]["hmi_cad_n"].ravel()
-                          if m["avg"][lbl] is not None
-                          else m["vlos_hmi_ref_n"].ravel())
-                test_f = m["lct"][lbl]["test_n"].ravel()
+        color     = cadence_color(j)
+        blk_total = m["total"][lbl]
+        blk_lct   = m["lct"][lbl]
+        hmi_cad   = m["avg_hmi_raw"][lbl]
+        hmi_tag   = f"HMI {lbl}" + (" (= ref)" if m["avg"][lbl] is None else "")
 
-            idx = np.random.choice(len(ref_f), min(4000, len(ref_f)), replace=False)
-            ax.scatter(ref_f[idx], test_f[idx], s=1.5, alpha=0.3,
-                       color=cadence_color(j) if ckey == "lct" else
-                       (CGOOD if ckey == "avg" else CHMI),
-                       rasterized=True)
-            lo = min(ref_f[idx].min(), test_f[idx].min())
-            hi = max(ref_f[idx].max(), test_f[idx].max())
-            ax.plot([lo, hi], [lo, hi], color=CGREY, lw=1, ls="--")
-            blk = m[ckey][lbl]
-            r = blk["r"] if blk is not None else np.nan
-            ax.set_xlabel(f"{ref_lbl}  (norm.)", fontsize=8)
-            ax.set_ylabel(f"{test_lbl}  (norm.)", fontsize=8)
-            ax.set_title(f"{lbl}  —  {test_lbl} vs {ref_lbl}\n$r$ = {r:.3f}",
-                         fontsize=8)
+        _scatter_panel(axes[0, j],
+                       m["vlos_hmi_ref"].ravel(),
+                       blk_total["test_raw"].ravel(),
+                       blk_total, color,
+                       xlabel="HMI ref (90s)  [m/s]",
+                       title=f"LCT {lbl}")
 
-    plt.tight_layout()
+        _scatter_panel(axes[1, j],
+                       hmi_cad.ravel(),
+                       blk_lct["test_raw"].ravel(),
+                       blk_lct, color,
+                       xlabel=f"{hmi_tag}  [m/s]",
+                       title="")
+
+    # row labels via first-column ylabels
+    axes[0, 0].set_ylabel("vs HMI ref\nLCT  [m/s]", fontsize=12)
+    axes[1, 0].set_ylabel("vs HMI cad\nLCT  [m/s]", fontsize=12)
+
     if save: plt.savefig(save)
     plt.show()
 
-
-def _cadence_to_seconds(label):
-    """Parse cadence label like '90s', '360s', '900s' to integer seconds."""
-    return int(label.rstrip("s"))
 
 def plot_psd_peak_vs_cadence(m, save=None):
     """
@@ -848,14 +833,16 @@ def plot_psd_peak_vs_cadence(m, save=None):
     X-axis uses actual cadence in seconds on a log scale so the gap between
     90s→360s (4x) and 360s→900s (2.5x) is physically proportional.
     """
+    def _cadence_to_seconds(label):
+        """Parse label like '90s', '360s', '900s' to integer seconds."""
+        return int(label.rstrip("s"))
+
     labels = m["labels"]
     x_sec  = np.array([_cadence_to_seconds(lbl) for lbl in labels], dtype=float)
 
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.axhline(m["psd_hmi_ref_peak"], color=CHMI, lw=1.2, ls=":",
                label=f"HMI ref peak  ({m['psd_hmi_ref_peak']:.0f} Mm)", zorder=5)
-    ax.axhline(SG_SCALE_MM, color=CGREY, lw=0.7, ls="--",
-               label=f"Expected SG  ({SG_SCALE_MM:.0f} Mm)")
 
     for ckey, color, marker, ls, lbl_str in [
         ("avg",   CGOOD,     "s", "-",  "HMI-cad  (averaging only)"),
@@ -915,7 +902,7 @@ def run_all(vlos_hmi_ref, vlos_hmi_cad, vlos_lct, lon, lat,
     m = compute_all(vlos_hmi_ref, vlos_hmi_cad, vlos_lct, lon, lat)
 
     def _s(tag):
-        return f"{save_prefix}_{tag}.png" if save_prefix else None
+        return f"{save_prefix}_{tag}.pdf" if save_prefix else None
 
     labels = m["labels"]
 
@@ -941,26 +928,25 @@ def run_all(vlos_hmi_ref, vlos_hmi_cad, vlos_lct, lon, lat,
                       f"{blk['bias_raw']:>9.2f}")
         print()
 
-    print("\n── STRUCTURE  (normalised) ───────────────────────────────────────")
-    print(f"  {'Cadence':<12}  {'':>18}  {'r_ODR':>7}  {'r':>7}  {'NCC':>7}  {'Skill':>7}  {'ODR slope':>10}")
-    print(f"  {'-'*12}  {'-'*18}  {'-'*7}  {'-'*7}  {'-'*7}  {'-'*7}  {'-'*10}")
+    print("\n── STRUCTURE  (raw fields) ───────────────────────────────────────")
+    print(f"  {'Cadence':<12}  {'':>18}  {'r':>7}  {'ODR slope':>12}  {'NCC':>7}  {'Skill':>7}")
+    print(f"  {'-'*12}  {'-'*18}  {'-'*7}  {'-'*12}  {'-'*7}  {'-'*7}")
     for lbl in labels:
         for ckey, cname in [("avg","HMI-cad/ref"), ("total","LCT/ref"), ("lct","LCT/HMI-cad")]:
             blk = m[ckey][lbl]
             if blk is None:
-                print(f"  {lbl:<12}  {cname:>18}  {'—':>7}  {'—':>7}  {'—':>7}  {'—':>7}  {'—':>10}")
+                print(f"  {lbl:<12}  {cname:>18}  {'—':>7}  {'—':>12}  {'—':>7}  {'—':>7}")
             else:
                 print(f"  {lbl:<12}  {cname:>18}  "
-                      f"{blk['r_odr']:>7.3f}  "
                       f"{blk['r']:>7.3f}  "
+                      f"{blk['odr_slope_raw']:>7.3f}±{blk['odr_slope_raw_err']:.3f}  "
                       f"{blk['ncc']:>7.3f}  "
-                      f"{blk['skill']:>7.3f}  "
-                      f"{blk['odr_slope_norm']:>7.3f}±{blk['odr_slope_norm_err']:.3f}")
+                      f"{blk['skill']:>7.3f}")
         print()
 
     print("\n── PSD PEAKS  [Mm] ───────────────────────────────────────────────")
     print(f"  HMI ref peak : {m['psd_hmi_ref_peak']:.1f} Mm  "
-          f"(expected SG ~{SG_SCALE_MM:.0f} Mm)")
+)
     print(f"  {'Cadence':<12}  {'':>18}  {'Raw peak':>9}  {'Norm peak':>10}")
     print(f"  {'-'*12}  {'-'*18}  {'-'*9}  {'-'*10}")
     for lbl in labels:
@@ -974,12 +960,10 @@ def run_all(vlos_hmi_ref, vlos_hmi_cad, vlos_lct, lon, lat,
                       f"{blk['psd_peak_norm']:>10.1f}")
         print()
 
-    plot_vlos_maps(m,                    save=_s("vlos_maps"))
-    plot_psd(m,                          save=_s("psd"))
-    plot_scatter(m,                      save=_s("scatter"))
-    plot_metric_vs_cadence(m,            save=_s("metric_vs_cadence"))
-    plot_degradation_decomposition(m,    save=_s("degradation"))
-    plot_psd_peak_vs_cadence(m,          save=_s("psd_peak_vs_cadence"))
+    plot_vlos_maps(m,              save=_s("vlos_maps"))
+    plot_scatter(m,                save=_s("scatter"))
+    plot_psd(m,                    save=_s("psd"))
+    plot_psd_peak_vs_cadence(m,    save=_s("psd_peak_vs_cadence"))
 
     return m
 
