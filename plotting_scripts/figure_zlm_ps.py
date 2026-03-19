@@ -158,3 +158,82 @@ fig.tight_layout()
 # fig.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/hfr_ps_rvort_uthe_hdiv.pdf', bbox_inches = 'tight')
 
 # %%
+# %% To make a plot with l=m+1 vortivity and l=m vorticity to compare with hanasoge papers
+flist_rvort_anti = []
+flist_rvort_sym = []
+
+for m in range(100):
+    try:
+        flist_rvort_anti.append(zlm_rvort_ft[:, sh.idx(m+1, m)])
+        flist_rvort_sym.append(zlm_rvort_ft[:, sh.idx(m, m)])
+    except:
+        break
+
+flist_rvort_anti = np.asarray(flist_rvort_anti).T
+flist_rvort_sym = np.asarray(flist_rvort_sym).T
+
+
+flist_rvort_anti_shifted = np.fft.fftshift(flist_rvort_anti, axes=0)
+flist_rvort_sym_shifted = np.fft.fftshift(flist_rvort_sym, axes=0)
+
+
+
+power_rvort_anti = np.abs(flist_rvort_anti_shifted)**2
+power_rvort_sym = np.abs(flist_rvort_sym_shifted)**2
+
+
+frqs_binned = rebin_1d(freqs_shifted, 1)
+power_rvort_anti_binned = rebin_2d_vertical(power_rvort_anti, 1)
+power_rvort_sym_binned = rebin_2d_vertical(power_rvort_sym, 1)
+
+M_arr = np.arange(0,35)
+freqs_for_median = (frqs_binned>-400) & (frqs_binned<400)
+
+power_median_rvort_anti = np.nanmedian(power_rvort_anti_binned[freqs_for_median, :], axis=0)
+power_median_rvort_sym = np.nanmedian(power_rvort_sym_binned[freqs_for_median, :], axis=0)
+
+
+for m in range(35):
+    power_rvort_anti_binned[:, m] = power_rvort_anti_binned[:, m]/power_median_rvort_anti[m]
+    power_rvort_sym_binned[:, m] = power_rvort_sym_binned[:, m]/power_median_rvort_sym[m]
+
+
+power_rvort_anti_binned = smooth_array(power_rvort_anti_binned, window_size=10)
+power_rvort_sym_binned = smooth_array(power_rvort_sym_binned, window_size=10)
+
+
+# %% Plot
+fig, ax = plt.subplots(1, 2, figsize = (8, 5))
+im = ax[0].pcolormesh(np.arange(flist_rvort_anti_shifted.shape[1]), frqs_binned, power_rvort_anti_binned, cmap = 'binary', vmax = 3, rasterized = True)
+# ax[0].plot(M_arr, -2*456/(M_arr+1), 'darkorange',label = r'$\omega = -2\Omega/(m+1)$')
+ax[0].plot(M_arr, -0.0093*M_arr**2 + 5.855*M_arr - 7.419, 'lime', label = r'$\sigma = -0.0093m^2 + 5.855m - 7.419$', alpha = 0.7)
+ax[0].plot(M_arr, -6.5*456/(M_arr+1), 'cyan',label = r'$\omega = -6.5\Omega/(m+1)$')
+ax[0].set_ylim(-400, 400)
+ax[0].set_xlim(0, 35)
+ax[0].set_xticks(np.arange(0, 34, 1), minor = True)
+ax[0].set_yticks(np.arange(-400, 401, 100), minor = False)
+ax[0].set_yticks(np.arange(-400, 401, 50), minor = True)
+ax[0].tick_params(which='minor', length=4, color='gray')
+ax[0].tick_params(which='major', length=8, color='black')
+ax[0].set_title(r'Power Spectrum of $\zeta_\mathrm{r}$ with $l=m+1$', fontsize = 10)
+ax[0].set_xlabel(r'$m$')
+ax[0].set_ylabel('Frequency [nHz]')
+ax[0].legend(loc='upper right', fontsize = 8)
+im = ax[1].pcolormesh(np.arange(flist_rvort_sym_shifted.shape[1]), frqs_binned, power_rvort_sym_binned, cmap = 'binary', vmax = 5, rasterized = True)
+ax[1].plot(M_arr, -2*456/(M_arr+1), 'darkorange',label = r'$\omega = -2\Omega/(m+1)$')
+ax[1].plot(M_arr[M_arr >= 21], -41 + 10.2*(M_arr[M_arr >= 21] - 21), 'b-', label=r'$\sigma = -41 + 10.2(m-21)$', alpha=0.7)
+ax[1].plot(M_arr[M_arr >= 19], -63 - 6.5*(M_arr[M_arr >= 19] - 19), 'magenta', label=r'$\sigma = -63 - 6.5(m-19)$', alpha=0.7)
+ax[1].set_ylim(-400, 400)
+ax[1].set_xlim(0, 35)
+ax[1].set_xticks(np.arange(0, 34, 1), minor = True)
+ax[1].set_yticks(np.arange(-400, 401, 100), minor = False)
+ax[1].set_yticks(np.arange(-400, 401, 50), minor = True)
+ax[1].tick_params(which='minor', length=4, color='gray')
+ax[1].tick_params(which='major', length=8, color='black')
+ax[1].set_title(r'Power Spectrum of $\zeta_\mathrm{r}$ with $l=m$', fontsize = 10)
+ax[1].set_xlabel(r'$m$')
+ax[1].legend(loc='upper right', fontsize = 8)
+fig.tight_layout()
+# fig.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/ps_rvort_hanasoge.pdf', bbox_inches = 'tight')
+
+# %%
