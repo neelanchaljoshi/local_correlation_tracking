@@ -245,7 +245,6 @@ lon0 = 120
 lat0 = 30
 limit = 1e-8
 proj_ortho = ccrs.Orthographic(central_longitude=lon0, central_latitude=lat0)
-
 fig = plt.figure(figsize=(18, 12))
 gs = gridspec.GridSpec(3, 5, width_ratios=[0.2, 1, 1, 1, 1], height_ratios=[0.2, 1, 1], wspace=0.2, hspace=0.6)
 
