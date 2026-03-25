@@ -146,9 +146,7 @@ axs[1, 1].tick_params(axis='both', labelsize=14)
 plt.tight_layout()
 # plt.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/ccf_widths_comparison.pdf')
 plt.show()
-# %%
-# %%
-# %%
+
 # %%
 import numpy as np
 import matplotlib.pyplot as plt
@@ -201,14 +199,11 @@ ccf_width_x_mag = np.ma.masked_where(np.abs(ccf_width_x_mag) < threshold, ccf_wi
 ccf_width_y_mag = np.ma.masked_where(np.abs(ccf_width_y_mag) < threshold, ccf_width_y_mag)
 
 # %%
-# Colormap
-cmap = plt.cm.turbo.copy()
-cmap.set_bad('white')   # masked values appear white
 
-# %%
-sns.set(style="ticks")
 
 fig, axs = plt.subplots(2,2, figsize=(12,10))
+cmap = plt.cm.turbo.copy()
+cmap.set_bad('white')
 
 lat_ticks = np.arange(-90,91,30)
 lon_ticks = np.arange(-90,91,30)
@@ -224,7 +219,7 @@ c1 = axs[0,0].pcolormesh(
 )
 
 cb1 = fig.colorbar(c1, ax=axs[0,0])
-cb1.set_label('Width (Mm)')
+cb1.set_label('Width (Mm)', fontsize=14)
 cb1.set_ticks([0,5,10,15,20,25])
 
 axs[0,0].set_title('CCF Width X (Granulation-based LCT)', fontsize=16)
@@ -240,7 +235,7 @@ c2 = axs[0,1].pcolormesh(
 )
 
 cb2 = fig.colorbar(c2, ax=axs[0,1])
-cb2.set_label('Width (Mm)')
+cb2.set_label('Width (Mm)', fontsize=14)
 cb2.set_ticks([0,5,10,15,20,25])
 
 axs[0,1].set_title('CCF Width Y (Granulation-based LCT)', fontsize=16)
@@ -256,7 +251,7 @@ c3 = axs[1,0].pcolormesh(
 )
 
 cb3 = fig.colorbar(c3, ax=axs[1,0])
-cb3.set_label('Width (Mm)')
+cb3.set_label('Width (Mm)', fontsize=14)
 cb3.set_ticks([0,5,10,15,20,25])
 
 axs[1,0].set_title('CCF Width X (Magnetogram-based LCT)', fontsize=16)
@@ -272,7 +267,7 @@ c4 = axs[1,1].pcolormesh(
 )
 
 cb4 = fig.colorbar(c4, ax=axs[1,1])
-cb4.set_label('Width (Mm)')
+cb4.set_label('Width (Mm)', fontsize=14)
 cb4.set_ticks([0,5,10,15,20,25])
 
 axs[1,1].set_title('CCF Width Y (Magnetogram-based LCT)', fontsize=16)
@@ -280,12 +275,12 @@ axs[1,1].set_title('CCF Width Y (Magnetogram-based LCT)', fontsize=16)
 for ax in axs.flatten():
     ax.set_xticks(lon_ticks)
     ax.set_yticks(lat_ticks)
-    ax.set_xlabel(r'Longitude [$\degree$]')
-    ax.set_ylabel(r'Latitude [$\degree$]')
-    ax.tick_params(labelsize=12)
+    ax.set_xlabel(r'Longitude [$\degree$]', fontsize=14)
+    ax.set_ylabel(r'Latitude [$\degree$]', fontsize=14)
+    ax.tick_params(labelsize=14)
 
 plt.tight_layout()
-plt.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/ccf_widths_comparison.pdf')
+# plt.savefig('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/ccf_widths_comparison.pdf')
 
 plt.show()
 # %%
