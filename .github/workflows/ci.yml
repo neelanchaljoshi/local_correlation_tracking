@@ -7,7 +7,7 @@ on:
     branches: ["**"]
 
 jobs:
-  test:
+  test-inertial-mode-pipeline:
     runs-on: ubuntu-latest
 
     steps:
@@ -36,4 +36,37 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           file: inertial_mode_pipeline/coverage.xml
-        continue-on-error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: inertial_mode_pipeline
+
+  test-lct-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r lct_pipeline/requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          cd lct_pipeline
+          python -m pytest tests/ -v --tb=short \
+            --cov=lct_pipeline \
+            --cov-report=term-missing \
+            --cov-report=xml
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          file: lct_pipeline/coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: lct_pipeline
