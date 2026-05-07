@@ -41,11 +41,15 @@ f = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/e
 uphi_m13_hmi_sm = f['uphi']
 uthe_m13_hmi_sm = f['uthe']
 
+f = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/plotting_scripts/lct_eigenfunction_m2_hl_sym_hmi_mag_sm.npz')
+uphi_m2_HL_hmi_sm = f['uphi']
+uthe_m2_HL_hmi_sm = f['uthe']
 # %% make 2d efs
 vphi_m1, vtheta_m1 = compute_2d_ef(uphi_m1_hmi_sm, uthe_m1_hmi_sm, m=1)
 vphi_m2, vtheta_m2 = compute_2d_ef(uphi_m2_hmi_sm, uthe_m2_hmi_sm, m=2)
 vphi_m8, vtheta_m8 = compute_2d_ef(uphi_m8_hmi_sm, uthe_m8_hmi_sm, m=8)
 vphi_m13, vtheta_m13 = compute_2d_ef(uphi_m13_hmi_sm, uthe_m13_hmi_sm, m=13)
+vphi_m2_HL, vtheta_m2_HL = compute_2d_ef(uphi_m2_HL_hmi_sm, uthe_m2_HL_hmi_sm, m=2)
 
 
 # %% Compute vorticity and divergence
@@ -60,6 +64,7 @@ _, _, rvort_m1, hdiv_m1 = calculate_vorticity_and_divergence(vphi_m1, vtheta_m1,
 _, _, rvort_m2, hdiv_m2 = calculate_vorticity_and_divergence(vphi_m2, vtheta_m2, nlat, nlon, lmax, mmax, rsun)
 _, _, rvort_m8, hdiv_m8 = calculate_vorticity_and_divergence(vphi_m8, vtheta_m8, nlat, nlon, lmax, mmax, rsun)
 _, _, rvort_m13, hdiv_m13 = calculate_vorticity_and_divergence(vphi_m13, vtheta_m13, nlat, nlon, lmax, mmax, rsun)
+_, _, rvort_m2_HL, hdiv_m2_HL = calculate_vorticity_and_divergence(vphi_m2_HL, vtheta_m2_HL, nlat, nlon, lmax, mmax, rsun)
 
 # %%
 import matplotlib.pyplot as plt
@@ -73,9 +78,9 @@ limit = 2e-8
 proj_ortho = ccrs.Orthographic(central_longitude=lon0, central_latitude=lat0)
 
 fig = plt.figure(figsize=(24, 21))
-gs = gridspec.GridSpec(5, 5, width_ratios=[0.2, 1, 1, 1, 1], height_ratios=[0.2, 1, 1, 1, 1], wspace=0.2, hspace=0.6)
+gs = gridspec.GridSpec(5, 5, width_ratios=[0.2, 1, 1, 1, 1], height_ratios=[0.2, 1, 1, 1, 1], wspace=0.1, hspace=0.2)
 
-flow_types = [r'$u_\phi$', r'$u_\theta$', r'$\zeta_\mathrm{r}$', r'$(\nabla \cdot \mathbf{u})_\mathrm{h}$']
+flow_types = [r'$u_\phi$', r'$u_\theta$', r'$\zeta_\mathrm{r}$', r'$\nabla \cdot \mathbf{u}_h$']
 row_labels = ['m = 1 HL (+)', 'm = 2 CL (+)', 'm = 8 Eq.R (+)', 'm=13 HFR (\N{MINUS SIGN})']
 
 data_arrays = [
@@ -130,4 +135,30 @@ for j in range(4):
 # plt.savefig('2d_eigenfunctions.pdf', bbox_inches='tight')
 plt.show()
 
+# %%
+
+# %% Plot m=2 mode only
+fig2 = plt.figure(figsize=(24, 7))
+gs2 = gridspec.GridSpec(1, 4, width_ratios=[1, 1, 1, 1], wspace=0.1, hspace=0.4)
+limit = 2e-8
+data_m2 = [vphi_m2_HL, vtheta_m2_HL, rvort_m2_HL/limit, hdiv_m2_HL/limit]
+limit = 2
+
+vmax_m2 = [2, 2, limit, limit]
+vmin_m2 = [-2, -2, -limit, -limit]
+
+for j in range(4):
+    ax = fig2.add_subplot(gs2[0, j], projection=proj_ortho)
+    im = ax.pcolormesh(lons, lats, data_m2[j], transform=ccrs.PlateCarree(), cmap='bwr',
+                       vmax=vmax_m2[j], vmin=vmin_m2[j], rasterized=True)
+    gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=False, linewidth=0.8, alpha=0.8, color='k', linestyle='--')
+    gl.ylocator = mticker.FixedLocator([-90, -60, -30, 0, 30, 60, 90])
+    cbar = fig2.colorbar(im, ax=ax, shrink=0.6, aspect=15, pad=0.05, location='bottom',
+                         ticks=[vmin_m2[j], 0, vmax_m2[j]])
+    cbar.ax.tick_params(labelsize=18)
+    cbar.set_label(label=r'$10^{-8}\,s^{-1}$' if j > 1 else r'$m\,s^{-1}$', fontsize=16)
+    ax.set_title(flow_types[j], fontsize=28, pad=20)
+
+# plt.savefig('2d_eigenfunction_m2_HL_thesis.pdf', bbox_inches='tight')
+plt.show()
 # %%
