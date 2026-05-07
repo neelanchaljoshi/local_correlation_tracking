@@ -16,3 +16,5 @@ data/
 *.npz
 pdfs/
 **/__pycache__/
+!requirements.txt
+!inertial_mode_pipeline/requirements.txt
