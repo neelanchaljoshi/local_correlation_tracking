@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r inertial_mode_pipeline/requirements.txt
+
+      - name: Run tests with coverage
+        run: |
+          cd inertial_mode_pipeline
+          python -m pytest tests/ -v --tb=short \
+            --cov=inertial_mode_pipeline \
+            --cov-report=term-missing \
+            --cov-report=xml
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        with:
+          file: inertial_mode_pipeline/coverage.xml
+        continue-on-error: true
