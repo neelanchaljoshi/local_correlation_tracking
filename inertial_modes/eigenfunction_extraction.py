@@ -13,12 +13,9 @@ from tqdm import tqdm
 sys.path.insert(0, '/data/seismo/zhichao/codes/pypkg')
 sys.path.append('/data/seismo/joshin/pipeline-test/python_modules/')
 import pandas as pd
-
 from zclpy3.remap import from_cyl_to_tan, get_tan_from_lnglat
 from matplotlib.patches import Circle
 import matplotlib.colors as colors
-
-
 plt.style.use('default')
 from numpy import linalg
 
@@ -316,7 +313,7 @@ def rotate_eigenfunction_1d(ef_uphi, ef_uthe, lat_for_rotation):
 
 def run():
     span = (t_array >= span_lower) & (t_array < span_upper)
-    rcut = 0.96
+    rcut = 0.99
     if reject_type == 'clip':
         uphi_clip = clip_flow_data(uphi, r, rcut, rsun_obs, pad=True)
         uthe_clip = clip_flow_data(uthe, r, rcut, rsun_obs, pad=True)
@@ -334,18 +331,18 @@ def run():
 
     uphi_ft, freq_ffts, uphi_r = transform_fourier(uphi_clip, crln, cft1, cfl1, span, dt = dt, to_Nhz = True)
     uthe_ft, freq_ffts, uthe_r = transform_fourier(uthe_clip, crln, cft2, cfl2, span, dt = dt, to_Nhz = True)
-    np.save(fig_path + 'uphi_ft_{}_{}_{}_{}_{}.npy'.format(rcut, span_lower, span_upper-1, sym_uphi, data_name), uphi_ft)
-    np.save(fig_path + 'uthe_ft_{}_{}_{}_{}_{}.npy'.format(rcut, span_lower, span_upper-1, sym_uthe, data_name), uthe_ft)
+    # np.save(fig_path + 'uphi_ft_{}_{}_{}_{}_{}.npy'.format(rcut, span_lower, span_upper-1, sym_uphi, data_name), uphi_ft)
+    # np.save(fig_path + 'uthe_ft_{}_{}_{}_{}_{}.npy'.format(rcut, span_lower, span_upper-1, sym_uthe, data_name), uthe_ft)
     # np.save(fig_path + 'uphi_r_{}_{}_{}.npy'.format(span_lower, span_upper-1, data_name), uphi_r)
     # np.save(fig_path + 'uthe_r_{}_{}_{}.npy'.format(span_lower, span_upper-1, data_name), uthe_r)
 
 
 
-    # ef_uphi, ef_uthe, final_td = extract_eigenfunction_lats(uphi_ft, uthe_ft, m, cent_freq, freq_ffts, lat_for_scaling = 0, nlng = 144, df = 10)
-    # np.savez(ef_path + 'eigenfunction_m{}_{}_{}_{}_{}.npz'.format(m, cent_freq, mode, symmetry, data_name),
-    #          ef_uphi = ef_uphi,
-    #          ef_uthe = ef_uthe,
-    #          final_td = final_td)
+    ef_uphi, ef_uthe, final_td = extract_eigenfunction_lats(uphi_ft, uthe_ft, m, cent_freq, freq_ffts, lat_for_scaling = 0, nlng = 144, df = 10)
+    np.savez(ef_path + 'eigenfunction_m{}_{}_{}_{}_{}.npz'.format(m, cent_freq, mode, symmetry, data_name),
+             ef_uphi = ef_uphi,
+             ef_uthe = ef_uthe,
+             final_td = final_td)
     return None
 
 
