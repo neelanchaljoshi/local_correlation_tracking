@@ -1,9 +1,18 @@
 # %%
 import numpy as np
 import matplotlib.pyplot as plt
+import re
 
 # ── Load ────────────────────────────────────────────────────
-data = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/eigenfunctions/eigenfunction_clean_m1_-88.0_highlat_anti_hmi_m_720s_dt_1h.npz')
+path = '/data/seismo/joshin/pipeline-test/local_correlation_tracking/data/eigenfunctions/eigenfunction_clean_m2_-171.0_highlat_sym_hmi_m_720s_dt_1h.npz'
+
+# Parse metadata from filename
+fname = path.split('/')[-1]
+match = re.match(r'eigenfunction_clean_m(\d+)_([-\d.]+)_(\w+)_(\w+)_(.+)\.npz', fname)
+m, freq, mode, symmetry, data_label = match.groups()
+title = rf'Eigenfunction $m={m}$, $\nu={freq}$ nHz  |  {mode}  |  {symmetry}  |  {data_label}'
+
+data = np.load(path)
 
 ef_uphi       = data['ef_uphi']
 ef_uthe       = data['ef_uthe']
@@ -15,7 +24,7 @@ lats          = data['lats']
 
 # ── Plot ────────────────────────────────────────────────────
 fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True)
-fig.suptitle(r'Eigenfunction $m=1$, $\nu=-88$ nHz', fontsize=13)
+fig.suptitle(title, fontsize=11)
 
 components = [
     (ef_uphi.real,  uphi_err_real, r'Re$(u_\phi)$',     'C0', axes[0, 0]),
