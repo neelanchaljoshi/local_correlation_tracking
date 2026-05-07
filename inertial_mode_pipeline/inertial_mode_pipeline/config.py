@@ -12,9 +12,6 @@ DATA_ROOT = pathlib.Path('/data/seismo/joshin/pipeline-test/local_correlation_tr
 EF_OUT    = DATA_ROOT / 'eigenfunctions'
 PROC_DATA = DATA_ROOT / 'processed_data'
 
-# Ensure output directory exists at import time
-EF_OUT.mkdir(parents=True, exist_ok=True)
-
 # ── Grid constants ────────────────────────────────────────────────────────
 LON_OG     = (-90.0, 90.0, 73)   # (start, stop, n_points)
 LAT_OG     = (-90.0, 90.0, 73)

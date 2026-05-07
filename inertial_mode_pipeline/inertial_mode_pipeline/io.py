@@ -104,6 +104,7 @@ def save_eigenfunction(result: dict, m: int, cent_freq: float,
     -------
     pathlib.Path — path to the saved file
     """
+    EF_OUT.mkdir(parents=True, exist_ok=True)
     filename = EF_FILENAME.format(
         m=m, freq=cent_freq, mode=mode,
         symmetry=symmetry, data=data_name)
