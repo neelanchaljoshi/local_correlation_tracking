@@ -37,5 +37,7 @@ Key applications:
 ## Author
 
 **Neelanchal Joshi**
+
 Doctoral Researcher, Max Planck Institute for Solar System Research
+
 [neelanchaljoshi.github.io](https://neelanchaljoshi.github.io)
