@@ -279,7 +279,7 @@ if downsample:
 else:
 	resolution = '4k'
 	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.ic_45s/keys_new_swan/keys-%Y.fits'
-outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/supergran/data/data_to_be_stitched_test_dspan_90s/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_supergran_1deg_gran_{resolution}.hdf5'
+outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/supergran/data/data_2k/data_to_be_stitched_15/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_supergran_1deg_gran_{resolution}.hdf5'
 segname = 'continuum.fits'
 
 ## mapping parameters

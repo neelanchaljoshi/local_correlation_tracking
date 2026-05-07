@@ -164,8 +164,8 @@ def get_ux_uy_ellipsoid(ccf_av, grid_len, patch_size, pixel_size, R_sun, ntry = 
 		dy_tot = dy_tot + del_y
 
 	#Calculate ux, uy
-	ux = R_sun * dx_tot * np.deg2rad(pixel_size)/(cadence_interp) * 1e6
-	uy = R_sun * dy_tot * np.deg2rad(pixel_size)/(cadence_interp) * 1e6
+	ux = R_sun * dx_tot * np.deg2rad(pixel_size)/(cadence) * 1e6
+	uy = R_sun * dy_tot * np.deg2rad(pixel_size)/(cadence) * 1e6
 
 	return dx_tot, dy_tot, ux, uy
 
@@ -278,7 +278,7 @@ if downsample:
 else:
 	resolution = '4k'
 	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.m_45s/keys_new_swan/keys-%Y.fits'
-outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/data_mag/data_{resolution}_{dstart.year}/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_diff_rot_5deg_mag_{resolution}.hdf5'
+outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/data_for_im/data_mag_{resolution}_{dstart.year}/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_diff_rot_5deg_mag_{resolution}.hdf5'
 segname = 'magnetogram.fits'
 
 ## mapping parameters

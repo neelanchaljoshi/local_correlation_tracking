@@ -7,7 +7,7 @@
 #SBATCH --mail-type=FAIL,INVALID_DEPEND,REQUEUE,STAGE_OUT,END
 #SBATCH --mail-user=joshin@mps.mpg.de
 #SBATCH --output=logs/%x_slurm%A_%a.log
-#SBATCH --job-name=2010_90s_90s_supergran_1deg_gran_4k_test_no_interp
+#SBATCH --job-name=2010_15m_15m_supergran_1deg_gran_2k_test_no_interp
 #SBATCH --cpus-per-task=1
 ##SBATCH --exclude=swan[18,27,28]
 #SBATCH --array=0-7
@@ -46,10 +46,10 @@ export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 export TIME="\nET %E | CPU %P | Max %M KB max"
 
 yr=${SLURM_JOB_NAME:0:4}
-dspan=90
-dstep=90
-downsample=""
-interpolate=""
+dspan=900
+dstep=900
+downsample="--downsample"
+interpolate="--interp"
 
 get_start_stop_from_index(){
     python3 <<END

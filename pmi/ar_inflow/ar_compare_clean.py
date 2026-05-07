@@ -2,25 +2,21 @@
 """
 LCT Resolution Comparison — HMI 4K vs PMI 2K
 =============================================
-Metrics and publication-quality plots for comparing LCT-derived
-active region inflow maps at two resolutions.
+Publication plots for comparing LCT-derived active region inflow maps at two
+resolutions (HMI 4K vs PMI-like 2K) and two cadences (15 min vs 30 min).
 
 QUICK START
 -----------
-    from lct_metrics import run_all, downsample_bz
+    from lct_metrics import run_paper_plots, load_data, compute_all
 
-    m = run_all(
-        vx_4k, vy_4k,        # HMI 4K LCT velocities  [m/s]
-        vx_2k, vy_2k,        # PMI 2K LCT velocities  [m/s]
-        bz=bz_downsampled,   # LOS magnetogram on flow-map grid [Gauss] — or None
-        pixel_scale_deg=0.5,
-        save_prefix="ar_run",
-    )
+    m15 = compute_all(*load_data(cadence="15min"))
+    m30 = compute_all(*load_data(cadence="30min"))
+    run_paper_plots(m15, m30, save_prefix="ar_inflow")
 
 NORMALISATION PHILOSOPHY
 ------------------------
   RAW velocities  → amplitude metrics (RMSE, bias, ratio), physical divergence [s⁻¹]
-  NORMALISED      → structural metrics (Pearson r, PSD shape, radial profile shape)
+  NORMALISED      → structural metrics (Pearson r, radial profile shape)
 
 The ~2.7x amplitude bias in PMI 2K is a known artefact of PSF-broadened CCF
 peaks; normalisation removes it so structural fidelity can be assessed cleanly.
@@ -29,81 +25,97 @@ peaks; normalisation removes it so structural fidelity can be assessed cleanly.
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+import matplotlib.ticker as mticker
+import matplotlib.patheffects as mpe
 from scipy.ndimage import gaussian_filter, uniform_filter1d, center_of_mass, zoom, binary_dilation
 from scipy.stats import pearsonr
-from scipy.fft import fft2, fftshift
 import warnings
 warnings.filterwarnings("ignore")
 
 
 # ── publication style ──────────────────────────────────────────────────────
 plt.rcParams.update({
-    "figure.facecolor":    "white",   "axes.facecolor":      "white",
-    "axes.edgecolor":      "#333333", "axes.labelcolor":     "#222222",
-    "axes.titlecolor":     "#111111", "axes.linewidth":      0.8,
-    "axes.grid":           True,      "grid.color":          "#dddddd",
-    "grid.linewidth":      0.5,       "grid.linestyle":      "--",
-    "xtick.color":         "#333333", "ytick.color":         "#333333",
-    "xtick.direction":     "in",      "ytick.direction":     "in",
-    "xtick.major.size":    3.5,       "ytick.major.size":    3.5,
-    "xtick.minor.size":    2.0,       "ytick.minor.size":    2.0,
-    "text.color":          "#222222", "font.family":         "sans-serif",
-    "font.size":           9,         "axes.labelsize":      9,
-    "axes.titlesize":      10,        "legend.fontsize":     8,
-    "legend.framealpha":   0.9,       "legend.edgecolor":    "#cccccc",
-    "figure.dpi":          150,       "savefig.dpi":         300,
-    "savefig.facecolor":   "white",   "savefig.bbox":        "tight",
-    "image.origin":        "lower",   "image.interpolation": "nearest",
+    "figure.facecolor":    "white",      "axes.facecolor":      "white",
+    "axes.edgecolor":      "#333333",    "axes.labelcolor":     "#222222",
+    "axes.titlecolor":     "#111111",    "axes.linewidth":      1.0,
+    "axes.grid":           False,
+    "xtick.color":         "#333333",    "ytick.color":         "#333333",
+    "xtick.direction":     "in",         "ytick.direction":     "in",
+    "xtick.major.size":    5.0,          "ytick.major.size":    5.0,
+    "xtick.minor.size":    3.0,          "ytick.minor.size":    3.0,
+    "xtick.major.width":   0.8,          "ytick.major.width":   0.8,
+    "xtick.labelsize":     11,           "ytick.labelsize":     11,
+    "text.color":          "#222222",    "font.family":         "sans-serif",
+    "font.size":           12,           "axes.labelsize":      12,
+    "axes.titlesize":      13,           "axes.titlepad":       8,
+    "legend.fontsize":     10,           "legend.framealpha":   0.92,
+    "legend.edgecolor":    "#bbbbbb",    "legend.borderpad":    0.5,
+    "figure.dpi":          150,          "savefig.dpi":         300,
+    "savefig.facecolor":   "white",      "savefig.bbox":        "tight",
+    "image.origin":        "lower",      "image.interpolation": "nearest",
+    "pdf.fonttype":        42,
+    "ps.fonttype":         42,
 })
 
-C4K   = "#1f77b4"   # blue  — HMI 4K
-C2K   = "#d62728"   # red   — PMI 2K
-CGOOD = "#2ca02c"   # green — reference lines
-CGREY = "#7f7f7f"   # grey  — neutral lines
+C4K   = "#1f77b4"   # blue   — HMI 4K
+C2K   = "#d62728"   # red    — PMI 2K
+CGOOD = "#2ca02c"   # green  — 15-min cadence
+C30   = "#ff7f0e"   # orange — 30-min cadence
+CGREY = "#7f7f7f"   # grey   — neutral lines
 R_SUN_MM = 695.7    # Mm
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# SECTION 1 — PLUG IN YOUR DATA HERE
+# SECTION 1 — DATA LOADING
 # ══════════════════════════════════════════════════════════════════════════════
 
-def load_data():
+def load_data(cadence="15min"):
     """
-    Load your LCT output and (optionally) the LOS magnetogram.
+    Load LCT output and the LOS magnetogram for a given cadence.
+
+    Parameters
+    ----------
+    cadence : "15min" or "30min"
 
     Returns
     -------
     vx_4k, vy_4k : 2D arrays — HMI 4K LCT velocities [m/s], shape (nlat, nlng)
     vx_2k, vy_2k : 2D arrays — PMI 2K LCT velocities [m/s], same shape
-    bz           : 2D array or None — LOS magnetogram [Gauss] on the flow-map
-                   grid (nlat, nlng). If your magnetogram is higher resolution,
-                   use downsample_bz(bz_highres, target_shape=vx_4k.shape) first.
-                   Pass None to skip magnetogram-based AR masking.
+    bz           : 2D array or None — LOS magnetogram [Gauss] on flow-map grid
+    longitude    : 1D array — longitude axis [degrees], length nlng
+    latitude     : 1D array — latitude axis [degrees], length nlat
 
     Notes
     -----
     - vx = longitudinal (phi) component;  positive = eastward
     - vy = latitudinal (theta) component; positive = northward
     - In your HDF5 output: vx = uphi, vy = -utheta
-    - Both fields must be time-averaged before passing in (or pass a single
-      time step if you want per-snapshot metrics)
+    - Both fields must be time-averaged before passing in
     """
+    BASE = ('/data/seismo/joshin/pipeline-test/local_correlation_tracking/'
+            'pmi/ar_inflow/data/data_cleaned/')
 
-    # ── REPLACE BELOW ─────────────────────────────────────────────────────
-    f1 = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/ar_inflow/data/data_cleaned/smooth_data_2k_15.npz')
-    vx_2k = f1['smooth_zx_corrected']
-    vy_2k = -f1['smooth_zy_corrected']
+    if cadence == "15min":
+        f1 = np.load(BASE + 'smooth_data_2k_15.npz')
+        f2 = np.load(BASE + 'smooth_data_4k_15.npz')
+    elif cadence == "30min":
+        f1 = np.load(BASE + 'smooth_data_2k_30.npz')
+        f2 = np.load(BASE + 'smooth_data_4k_30.npz')
+    else:
+        raise ValueError(f"Unknown cadence '{cadence}'. Use '15min' or '30min'.")
 
-    f2 = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/ar_inflow/data/data_cleaned/smooth_data_4k_15.npz')
-    vx_4k = f2['smooth_zx_corrected']
-    vy_4k = -f2['smooth_zy_corrected']
+    vx_2k     = f1['smooth_zx_corrected']
+    vy_2k     = -f1['smooth_zy_corrected']
+    vx_4k     = f2['smooth_zx_corrected']
+    vy_4k     = -f2['smooth_zy_corrected']
+    longitude = f2['longitude']
+    latitude  = f2['latitude']
 
-    bz_file    = np.load('/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/ar_inflow/data/data_cleaned/magnetogram_cropped.npz')
+    bz_file    = np.load(BASE + 'magnetogram_cropped.npz')
     bz_highres = bz_file['img_cropped']
     bz         = downsample_bz(bz_highres, target_shape=vx_4k.shape)
 
-    return vx_4k, vy_4k, vx_2k, vy_2k, bz
-    # ── END REPLACE ───────────────────────────────────────────────────────
+    return vx_4k, vy_4k, vx_2k, vy_2k, bz, longitude, latitude
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -114,6 +126,7 @@ PIXEL_SCALE_DEG   = 0.5    # degrees per pixel in the flow map
 MAG_THRESHOLD_G   = 50.0   # |Bz| threshold for AR core definition [Gauss]
 DILATION_PX       = 5      # dilation radius around AR core [pixels] (~30 Mm)
 INFLOW_PERCENTILE = 20     # bottom N% of 4K divergence = inflow zone
+QUIVER_STRIDE     = 2      # plot every Nth vector in flow maps (tune to taste)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -128,19 +141,13 @@ def px_scale_Mm(pixel_scale_deg=PIXEL_SCALE_DEG):
     return px_scale_m(pixel_scale_deg) / 1e6
 
 def downsample_bz(bz_highres, target_shape):
-    """
-    Downsample a high-resolution magnetogram to the flow-map grid.
-    Uses order=1 (bilinear) to avoid ringing on sharp field concentrations.
-    """
+    """Downsample a high-resolution magnetogram to the flow-map grid (bilinear)."""
     factor = (target_shape[0] / bz_highres.shape[0],
               target_shape[1] / bz_highres.shape[1])
     return zoom(np.nan_to_num(bz_highres), factor, order=1)
 
 def normalise_vector(vx, vy):
-    """
-    Remove mean and divide both components by std(speed).
-    Single scale factor preserves relative vx/vy strength.
-    """
+    """Remove mean; divide both components by std(speed) to preserve vx/vy ratio."""
     scale = np.std(np.hypot(vx, vy))
     return (vx - np.mean(vx)) / scale, (vy - np.mean(vy)) / scale
 
@@ -202,47 +209,13 @@ def make_ar_mask_from_bz(bz, mag_threshold_G=MAG_THRESHOLD_G,
     return binary_dilation(core, iterations=dilation_px)
 
 def make_field_strength_masks(bz):
-    """Split domain into quiet / medium / strong field for stratified analysis."""
+    """Split domain into quiet / medium / strong field."""
     bz_abs = np.abs(bz)
     return {
         "quiet":  bz_abs <  50,
         "medium": (bz_abs >= 50) & (bz_abs < 300),
         "strong": bz_abs >= 300,
     }
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PSD
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _radial_avg(power):
-    """Radially averaged (isotropic) 1D PSD from a 2D power spectrum."""
-    N = power.shape[0]
-    cy, cx = N // 2, N // 2
-    y, x = np.ogrid[:N, :N]
-    r = np.hypot(x - cx, y - cy).astype(int).ravel()
-    p = power.ravel()
-    k_max = min(cx, cy)
-    bins = np.zeros(k_max); cnts = np.zeros(k_max)
-    for ri, pi in zip(r, p):
-        if ri < k_max:
-            bins[ri] += pi; cnts[ri] += 1
-    cnts[cnts == 0] = np.nan
-    return bins / cnts
-
-def compute_psd(field, pixel_scale_Mm):
-    """
-    Radially averaged 1D PSD.
-    Returns spatial scale in Mm (1/k) and power.
-    k=0 (the mean) is set to nan to avoid division by zero.
-    """
-    psd      = np.abs(fftshift(fft2(field)))**2
-    avg      = _radial_avg(psd)
-    k_cpp    = np.arange(len(avg)) / field.shape[0]   # cycles per pixel
-    k_Mm     = k_cpp / pixel_scale_Mm                  # cycles per Mm
-    k_Mm[0]  = np.nan                                  # exclude DC component
-    scale_Mm = 1.0 / k_Mm                              # spatial scale in Mm
-    return scale_Mm, avg
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -274,6 +247,8 @@ def _zero_crossing_after(profile, start_idx, r_Mm):
 
 def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
                 bz=None,
+                longitude=None,
+                latitude=None,
                 pixel_scale_deg=PIXEL_SCALE_DEG):
     """
     Compute all metrics and intermediate arrays.
@@ -283,6 +258,8 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
     vx_4k, vy_4k    : HMI 4K LCT velocities [m/s], shape (nlat, nlng)
     vx_2k, vy_2k    : PMI 2K LCT velocities [m/s], same shape
     bz               : LOS magnetogram [Gauss] on flow-map grid, or None
+    longitude        : 1D array of longitudes [deg], length nlng, or None
+    latitude         : 1D array of latitudes [deg], length nlat, or None
     pixel_scale_deg  : degrees per pixel in the flow map
 
     Returns
@@ -297,16 +274,14 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
     vx_2n, vy_2n = normalise_vector(vx_2k, vy_2k)
 
     # ── divergence ────────────────────────────────────────────────────────
-    div_4k_phys = divergence_physical(vx_4k, vy_4k, pixel_scale_deg)   # s⁻¹
-    div_2k_phys = divergence_physical(vx_2k, vy_2k, pixel_scale_deg)   # s⁻¹
-    div_4k_norm = divergence_normalised(vx_4n, vy_4n)                  # arb.
-    div_2k_norm = divergence_normalised(vx_2n, vy_2n)                  # arb.
+    div_4k_phys = divergence_physical(vx_4k, vy_4k, pixel_scale_deg)
+    div_2k_phys = divergence_physical(vx_2k, vy_2k, pixel_scale_deg)
+    div_4k_norm = divergence_normalised(vx_4n, vy_4n)
+    div_2k_norm = divergence_normalised(vx_2n, vy_2n)
 
     # ── speed ─────────────────────────────────────────────────────────────
     speed_4k = np.hypot(vx_4k, vy_4k)
     speed_2k = np.hypot(vx_2k, vy_2k)
-    speed_4n = np.hypot(vx_4n, vy_4n)
-    speed_2n = np.hypot(vx_2n, vy_2n)
 
     # ── masks ─────────────────────────────────────────────────────────────
     imask    = make_inflow_mask(div_4k_phys)
@@ -331,7 +306,7 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
     # ── STRUCTURAL METRICS — normalised ───────────────────────────────────
     m["r_vx"]         = pearson_r(vx_4n,       vx_2n)
     m["r_vy"]         = pearson_r(vy_4n,       vy_2n)
-    m["r_speed"]      = pearson_r(speed_4n,    speed_2n)
+    m["r_speed"]      = pearson_r(np.hypot(vx_4n, vy_4n), np.hypot(vx_2n, vy_2n))
     m["r_div"]        = pearson_r(div_4k_norm, div_2k_norm)
     m["vector_skill"] = vector_skill(vx_4n, vy_4n, vx_2n, vy_2n)
 
@@ -340,7 +315,7 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
     m["rmse_div_inflow"] = rmse(div_4k_norm, div_2k_norm, mask=imask)
     m["bias_div_inflow"] = bias(div_4k_norm, div_2k_norm, mask=imask)
 
-    # ── AR MASK METRICS — magnetogram-based ───────────────────────────────
+    # ── AR MASK METRICS ───────────────────────────────────────────────────
     if ar_mask is not None:
         m["r_div_ar"]    = pearson_r(div_4k_norm, div_2k_norm, mask=ar_mask)
         m["rmse_div_ar"] = rmse(div_4k_norm, div_2k_norm, mask=ar_mask)
@@ -349,26 +324,6 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
             m[f"r_div_{label}"] = (pearson_r(div_4k_norm, div_2k_norm, mask=fmask)
                                    if fmask.any() else np.nan)
 
-    # ── PSD ───────────────────────────────────────────────────────────────
-    k, psd_4k_raw  = compute_psd(speed_4k, pxMm)
-    _, psd_2k_raw  = compute_psd(speed_2k, pxMm)
-    _, psd_4k_norm = compute_psd(speed_4n, pxMm)
-    _, psd_2k_norm = compute_psd(speed_2n, pxMm)
-    m["psd_k"]          = k                # spatial scale in Mm
-    m["psd_4k_raw"]     = psd_4k_raw
-    m["psd_2k_raw"]     = psd_2k_raw
-    m["psd_ratio_raw"]  = np.where(psd_4k_raw  > 0, psd_2k_raw  / psd_4k_raw,  np.nan)
-    m["psd_4k_norm"]    = psd_4k_norm
-    m["psd_2k_norm"]    = psd_2k_norm
-    m["psd_ratio_norm"] = np.where(psd_4k_norm > 0, psd_2k_norm / psd_4k_norm, np.nan)
-
-    # PSD peaks (spatial scale at maximum power, excluding sub-granulation noise)
-    sel_psd = (k > 2.0) & np.isfinite(k)
-    for tag, psd in [("4k_raw", psd_4k_raw), ("2k_raw", psd_2k_raw),
-                     ("4k_norm", psd_4k_norm), ("2k_norm", psd_2k_norm)]:
-        idx = np.nanargmax(psd[sel_psd])
-        m[f"psd_peak_scale_{tag}"] = float(k[sel_psd][idx])
-
     # ── RADIAL PROFILE — normalised divergence, Mm axis ───────────────────
     p4_raw = radial_profile(div_4k_norm, com)
     p2_raw = radial_profile(div_2k_norm, com)
@@ -376,15 +331,12 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
     p2     = uniform_filter1d(p2_raw[:max_r], size=3)
     r_Mm   = np.arange(max_r) * pxMm
 
-    # trough = actual profile minimum for each instrument independently
     trough_px_4k = int(np.argmin(p4))
     trough_px_2k = int(np.argmin(p2))
 
-    # zero crossing after each trough = inflow spatial extent
     extent_Mm_4k = _zero_crossing_after(p4, trough_px_4k, r_Mm)
     extent_Mm_2k = _zero_crossing_after(p2, trough_px_2k, r_Mm)
 
-    # inner/outer masks using each instrument's own trough boundary
     inner_4k = r_map <  trough_px_4k
     outer_4k = (r_map >= trough_px_4k) & (r_map < max_r)
     inner_2k = r_map <  trough_px_2k
@@ -399,14 +351,13 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
     m["trough_px_2k"]    = trough_px_2k
     m["trough_Mm_4k"]    = trough_px_4k * pxMm
     m["trough_Mm_2k"]    = trough_px_2k * pxMm
-    m["trough_shift_Mm"] = (trough_px_2k - trough_px_4k) * pxMm  # + = outward shift
-    m["trough_Mm"]       = m["trough_Mm_4k"]   # backward compat
+    m["trough_shift_Mm"] = (trough_px_2k - trough_px_4k) * pxMm
+    m["trough_Mm"]       = m["trough_Mm_4k"]
     m["extent_Mm_4k"]    = extent_Mm_4k
     m["extent_Mm_2k"]    = extent_Mm_2k
-
-    m["radial_r_Mm"] = r_Mm
-    m["radial_p4"]   = p4
-    m["radial_p2"]   = p2
+    m["radial_r_Mm"]     = r_Mm
+    m["radial_p4"]       = p4
+    m["radial_p2"]       = p2
 
     # ── store arrays ──────────────────────────────────────────────────────
     m.update({
@@ -417,576 +368,527 @@ def compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
         "speed_4k": speed_4k,       "speed_2k": speed_2k,
         "inflow_mask": imask,       "ar_mask": ar_mask,
         "bz": bz,                   "pxMm": pxMm,
+        "longitude": longitude,     "latitude": latitude,
     })
     return m
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PLOT HELPERS
+# SHARED PLOT HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _imshow(ax, data, cmap, title, unit="", sym=False):
+def _axis_kw(longitude, latitude):
+    """Return extent dict for imshow/contour when coordinates are available."""
+    if longitude is not None and latitude is not None:
+        return {"extent": [longitude[0], longitude[-1],
+                            latitude[0],  latitude[-1]],
+                "origin": "lower"}
+    return {}
+
+def _set_latlon_ticks(ax, longitude, latitude):
+    """Apply degree-labelled ticks; no-op if coordinates are absent."""
+    if longitude is not None and latitude is not None:
+        ax.set_xlabel("Longitude [°]")
+        ax.set_ylabel("Latitude [°]")
+        ax.xaxis.set_major_locator(mticker.MaxNLocator(5, integer=True))
+        ax.yaxis.set_major_locator(mticker.MaxNLocator(4, integer=True))
+    else:
+        ax.set_xticks([]); ax.set_yticks([])
+
+def _imshow_latlon(ax, data, cmap, title, unit="", sym=False,
+                   longitude=None, latitude=None):
+    """imshow with optional lat/lon axes and a clean colourbar."""
     if sym:
         vmax = np.nanpercentile(np.abs(data), 99); vmin = -vmax
     else:
         vmin, vmax = np.nanpercentile(data, [1, 99])
-    im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax)
-    ax.set_title(title, pad=4)
-    ax.set_xticks([]); ax.set_yticks([])
-    for sp in ax.spines.values(): sp.set_linewidth(0.6)
-    cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.03)
-    cb.set_label(unit, fontsize=8)
-    cb.ax.tick_params(labelsize=7, direction="in")
-    cb.outline.set_linewidth(0.6)
+
+    if longitude is not None and latitude is not None:
+        lon_span = abs(longitude[-1] - longitude[0])
+        lat_span = abs(latitude[-1]  - latitude[0])
+        asp = lat_span / lon_span if lon_span > 0 else "auto"
+    else:
+        asp = "equal"
+
+    kw = _axis_kw(longitude, latitude)
+    im = ax.imshow(data, cmap=cmap, vmin=vmin, vmax=vmax,
+                   aspect=asp, **kw)
+    _set_latlon_ticks(ax, longitude, latitude)
+    ax.set_title(title)
+    for sp in ax.spines.values():
+        sp.set_linewidth(0.8)
+    cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cb.set_label(unit)
+    cb.ax.tick_params(direction="in")
+    cb.outline.set_linewidth(0.8)
     return im
 
-def _overlay_bz(ax, bz):
-    """Overplot magnetogram polarity contours."""
-    ax.contour(bz, levels=[ 100,  300,  500], colors=C2K,
-               linewidths=0.6, linestyles="-")
-    ax.contour(bz, levels=[-500, -300, -100], colors=C4K,
-               linewidths=0.6, linestyles="--")
+def _overlay_bz(ax, bz, longitude=None, latitude=None):
+    kw = _axis_kw(longitude, latitude)
+    # white solid for B+, black dashed for B- — visible against any divergence cmap
+    ax.contour(bz, levels=[ 100,  300,  500], colors="white",
+               linewidths=1.0, linestyles="-",  **kw)
+    ax.contour(bz, levels=[-500, -300, -100], colors="black",
+               linewidths=1.0, linestyles="--", **kw)
 
-def _overlay_inflow_mask(ax, mask):
+def _overlay_ar_mask(ax, mask, longitude=None, latitude=None):
+    kw = _axis_kw(longitude, latitude)
     ax.contour(mask.astype(float), levels=[0.5],
-               colors="#333333", linewidths=0.7, linestyles=":")
+               colors="#555555", linewidths=0.8, linestyles="--", **kw)
 
-def _overlay_ar_mask(ax, mask):
-    ax.contour(mask.astype(float), levels=[0.5],
-               colors="#555555", linewidths=0.8, linestyles="--")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PLOT FUNCTIONS
-# ══════════════════════════════════════════════════════════════════════════════
-
-def plot_velocity_maps(m, save=None):
-    """Raw velocity maps — illustrates amplitude difference."""
-    fig, axes = plt.subplots(3, 3, figsize=(13, 10),
-                             gridspec_kw={"hspace": 0.35, "wspace": 0.15})
-    fig.suptitle("Velocity fields (raw)  [m s$^{-1}$]  |  "
-                 "HMI 4K · PMI 2K · Residual", fontsize=11)
-    rows = [
-        (m["vx_4k"],    m["vx_2k"],    m["vx_2k"]    - m["vx_4k"],    "$v_x$",  "m s$^{-1}$"),
-        (m["vy_4k"],    m["vy_2k"],    m["vy_2k"]    - m["vy_4k"],    "$v_y$",  "m s$^{-1}$"),
-        (m["speed_4k"], m["speed_2k"], m["speed_2k"] - m["speed_4k"], "Speed",  "m s$^{-1}$"),
-    ]
-    for i, (r, t, res, label, unit) in enumerate(rows):
-        _imshow(axes[i,0], r,   "RdBu_r", f"{label}  HMI 4K",           unit, sym=(i<2))
-        _imshow(axes[i,1], t,   "RdBu_r", f"{label}  PMI 2K",           unit, sym=(i<2))
-        _imshow(axes[i,2], res, "RdBu_r", f"{label}  Residual (2K−4K)", unit, sym=True)
-    plt.tight_layout()
-    if save: plt.savefig(save)
-    plt.show()
-
-
-def plot_divergence_maps(m, save=None):
+def _quiver(ax, vx, vy, longitude=None, latitude=None,
+            color="k", stride=QUIVER_STRIDE, scale=None, alpha=0.85):
     """
-    Two rows: physical [s⁻¹] and normalised [arb.] divergence.
-    Overlays: inflow mask (dotted), AR mask if bz provided (dashed),
-              magnetogram polarity contours if bz provided.
+    Overplot subsampled velocity vectors.
+
+    Positions are in degree coordinates when longitude/latitude are given,
+    otherwise in pixel indices.  A common `scale` value keeps arrow lengths
+    comparable across panels.
     """
-    fig, axes = plt.subplots(2, 3, figsize=(13, 8),
-                             gridspec_kw={"hspace": 0.4, "wspace": 0.18})
-    fig.suptitle("Divergence $\\nabla\\cdot\\mathbf{v}$  |  Negative = Inflow",
-                 fontsize=11)
+    s    = stride
+    vx_s = vx[::s, ::s]
+    vy_s = vy[::s, ::s]
 
-    rows = [
-        (m["div_4k_phys"], m["div_2k_phys"], "s$^{-1}$", "Physical"),
-        (m["div_4k_norm"], m["div_2k_norm"], "arb.",      "Normalised"),
-    ]
-    for row_i, (d4, d2, unit, label) in enumerate(rows):
-        for col_i, (arr, title) in enumerate(zip(
-            [d4, d2, d2 - d4],
-            [f"{label}  HMI 4K", f"{label}  PMI 2K",
-             f"{label}  Residual (2K−4K)"]
-        )):
-            ax = axes[row_i, col_i]
-            _imshow(ax, arr, "RdBu_r", title, unit=unit, sym=True)
-            _overlay_inflow_mask(ax, m["inflow_mask"])
-            if m["ar_mask"] is not None:
-                _overlay_ar_mask(ax, m["ar_mask"])
-            if m["bz"] is not None:
-                _overlay_bz(ax, m["bz"])
-
-    # legend
-    legend_handles = [
-        mlines.Line2D([], [], color="#333333", ls=":", lw=0.8,
-                      label=f"Inflow zone (bot. {INFLOW_PERCENTILE}% div.)"),
-    ]
-    if m["ar_mask"] is not None:
-        legend_handles.append(
-            mlines.Line2D([], [], color="#555555", ls="--", lw=0.8,
-                          label=f"AR mask  |Bz|>{MAG_THRESHOLD_G} G"))
-    if m["bz"] is not None:
-        legend_handles += [
-            mlines.Line2D([], [], color=C2K, ls="-",  lw=0.7, label="$B_+$"),
-            mlines.Line2D([], [], color=C4K, ls="--", lw=0.7, label="$B_-$"),
-        ]
-    axes[0, 0].legend(handles=legend_handles, fontsize=6.5,
-                      loc="lower left", framealpha=0.85)
-    plt.tight_layout()
-    if save: plt.savefig(save)
-    plt.show()
-
-
-def plot_psd(m, save=None):
-    """
-    Raw and normalised PSD + ratios (4 panels).
-    X-axis: spatial scale in Mm (log, inverted — large scales left).
-    Vertical lines mark the PSD peak scale for each curve.
-    """
-    scale = m["psd_k"]                              # spatial scale in Mm
-    sel   = (scale > 2.0) & np.isfinite(scale)     # exclude sub-granulation noise
-
-    # tick positions at physically meaningful scales
-    scale_ticks = np.array([3, 5, 10, 20, 30, 50, 100, 200])
-    scale_min   = scale[sel].min()
-    scale_max   = scale[sel].max()
-    scale_ticks = scale_ticks[(scale_ticks >= scale_min) & (scale_ticks <= scale_max)]
-
-    # reference lines at known solar scales
-    ref_lines = {"Granule\n~2 Mm": 2, "Supergranule\n~30 Mm": 30, "Inflow\n~50 Mm": 50}
-
-    def _fmt_ax(ax, ylabel, title):
-        ax.set_xscale("log")
-        ax.invert_xaxis()
-        ax.set_xlim(scale_max * 1.05, scale_min * 0.95)
-        ax.set_xticks(scale_ticks)
-        ax.set_xticklabels([str(t) for t in scale_ticks], fontsize=8)
-        ax.tick_params(axis="x", which="minor", bottom=False)
-        ax.set_xlabel("Spatial scale [Mm]", fontsize=9)
-        ax.set_ylabel(ylabel, fontsize=9)
-        ax.set_title(title, fontsize=9, pad=6)
-
-    def _add_refs(ax):
-        for label, s in ref_lines.items():
-            if scale_min < s < scale_max:
-                ax.axvline(s, color=CGREY, lw=0.6, ls=":", zorder=0)
-                ax.text(s, 1.01, label, fontsize=6, ha="center", va="bottom",
-                        color=CGREY, transform=ax.get_xaxis_transform())
-
-    def _add_peak_line(ax, scale_val, color, label):
-        """Vertical line at the PSD peak scale with a small label."""
-        if np.isfinite(scale_val) and scale_min < scale_val < scale_max:
-            ax.axvline(scale_val, color=color, lw=1.0, ls="--", alpha=0.7, zorder=2)
-            ax.text(scale_val, 0.97, f"{scale_val:.0f} Mm",
-                    fontsize=6, ha="center", va="top", color=color,
-                    transform=ax.get_xaxis_transform())
-
-    # taller figure, extra top margin so suptitle clears panel titles
-    fig, axes = plt.subplots(1, 4, figsize=(16, 5.2),
-                             gridspec_kw={"wspace": 0.42})
-    fig.suptitle("Power Spectral Density (radial average)",
-                 fontsize=11, y=1.03)
-
-    # panel 0 — raw PSD
-    axes[0].semilogy(scale[sel], m["psd_4k_raw"][sel],
-                     color=C4K, lw=1.5, label="HMI 4K")
-    axes[0].semilogy(scale[sel], m["psd_2k_raw"][sel],
-                     color=C2K, lw=1.5, ls="--", label="PMI 2K")
-    axes[0].legend(fontsize=8)
-    _fmt_ax(axes[0], "PSD [arb.]", "Raw PSD\n(amplitude bias visible)")
-    _add_refs(axes[0])
-    _add_peak_line(axes[0], m["psd_peak_scale_4k_raw"], C4K, "HMI 4K")
-    _add_peak_line(axes[0], m["psd_peak_scale_2k_raw"], C2K, "PMI 2K")
-
-    # panel 1 — raw ratio
-    axes[1].axhline(1, color=CGREY, lw=0.8, ls="--", label="Ratio = 1")
-    axes[1].plot(scale[sel], m["psd_ratio_raw"][sel],
-                 color=CGOOD, lw=1.5, label="PMI / HMI")
-    axes[1].set_ylim(0, max(3, np.nanpercentile(m["psd_ratio_raw"][sel], 95) * 1.2))
-    axes[1].legend(fontsize=8)
-    _fmt_ax(axes[1], "PSD ratio", "Raw PSD ratio\n>1 = amplitude overestimation")
-    _add_refs(axes[1])
-
-    # panel 2 — normalised PSD
-    axes[2].semilogy(scale[sel], m["psd_4k_norm"][sel],
-                     color=C4K, lw=1.5, label="HMI 4K")
-    axes[2].semilogy(scale[sel], m["psd_2k_norm"][sel],
-                     color=C2K, lw=1.5, ls="--", label="PMI 2K")
-    axes[2].legend(fontsize=8)
-    _fmt_ax(axes[2], "PSD [arb.]", "Normalised PSD\n(structure only)")
-    _add_refs(axes[2])
-    _add_peak_line(axes[2], m["psd_peak_scale_4k_norm"], C4K, "HMI 4K")
-    _add_peak_line(axes[2], m["psd_peak_scale_2k_norm"], C2K, "PMI 2K")
-
-    # panel 3 — normalised ratio
-    axes[3].axhline(1, color=CGREY, lw=0.8, ls="--", label="Ratio = 1")
-    axes[3].plot(scale[sel], m["psd_ratio_norm"][sel],
-                 color=CGOOD, lw=1.5, label="PMI / HMI")
-    axes[3].set_ylim(0, 2)
-    axes[3].legend(fontsize=8)
-    _fmt_ax(axes[3], "PSD ratio",
-            "Normalised PSD ratio\n$\\approx$1 = structure preserved")
-    _add_refs(axes[3])
-
-    plt.tight_layout()
-    if save: plt.savefig(save, bbox_inches="tight")
-    plt.show()
-
-
-def plot_scatter(m, save=None):
-    """Scatter on normalised fields — structure only, no amplitude."""
-    pairs = [
-        (m["vx_4n"],       m["vx_2n"],       "$v_x$ (norm.)",             m["r_vx"]),
-        (m["vy_4n"],       m["vy_2n"],       "$v_y$ (norm.)",             m["r_vy"]),
-        (m["div_4k_norm"], m["div_2k_norm"], "$\\nabla\\cdot v$ (norm.)", m["r_div"]),
-    ]
-    fig, axes = plt.subplots(1, 3, figsize=(14, 6),
-                             gridspec_kw={"wspace": 0.35})
-    fig.suptitle("Scatter: HMI 4K vs PMI 2K  (normalised fields)", fontsize=11)
-    for ax, (ref, tst, label, r) in zip(axes, pairs):
-        ref_f, tst_f = ref.ravel(), tst.ravel()
-        idx = np.random.choice(len(ref_f), min(5000, len(ref_f)), replace=False)
-        ax.scatter(ref_f[idx], tst_f[idx], s=1.5, alpha=0.3,
-                   color=C4K, rasterized=True)
-        lo = min(ref_f[idx].min(), tst_f[idx].min())
-        hi = max(ref_f[idx].max(), tst_f[idx].max())
-        ax.plot([lo, hi], [lo, hi], color=C2K, lw=1, ls="--", label="1:1")
-        ax.set_xlabel(f"HMI 4K  {label}")
-        ax.set_ylabel(f"PMI 2K  {label}")
-        ax.set_title(f"{label}\n$r$ = {r:.3f}")
-        ax.legend()
-    plt.tight_layout()
-    if save: plt.savefig(save)
-    plt.show()
-
-
-def plot_radial_profile(m, save=None):
-    """
-    Radial divergence profile — shape comparison in physical distance.
-    Annotates:
-      - trough location for 4K (solid grey) and 2K (dashed grey)
-      - zero crossing (inflow extent) for 4K (solid) and 2K (dashed)
-    """
-    r   = m["radial_r_Mm"]
-    p4  = m["radial_p4"]
-    p2  = m["radial_p2"]
-    t4  = m["trough_Mm_4k"]
-    t2  = m["trough_Mm_2k"]
-    e4  = m["extent_Mm_4k"]
-    e2  = m["extent_Mm_2k"]
-
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.plot(r, p4, color=C4K, lw=1.5, label="HMI 4K")
-    ax.plot(r, p2, color=C2K, lw=1.5, ls="--", label="PMI 2K")
-    ax.axhline(0, color=CGREY, lw=0.7)
-
-    # trough lines
-    ax.axvline(t4, color=C4K, lw=0.9, ls=":",
-               label=f"Trough 4K  {t4:.0f} Mm")
-    ax.axvline(t2, color=C2K, lw=0.9, ls=":",
-               label=f"Trough 2K  {t2:.0f} Mm")
-
-    # zero crossing / inflow extent lines
-    if np.isfinite(e4):
-        ax.axvline(e4, color=C4K, lw=0.9, ls="-.",
-                   label=f"Extent 4K  {e4:.0f} Mm")
-    if np.isfinite(e2):
-        ax.axvline(e2, color=C2K, lw=0.9, ls="-.",
-                   label=f"Extent 2K  {e2:.0f} Mm")
-
-    ax.set_xlabel("Radius from inflow centre [Mm]")
-    ax.set_ylabel("Mean normalised divergence [arb.]")
-    ax.set_title("Radial divergence profile  (normalised — shape only)\n"
-                 "Dotted = trough   Dash-dot = inflow extent (zero crossing)")
-    ax.legend(fontsize=8, loc="upper right")
-    plt.tight_layout()
-    if save: plt.savefig(save)
-    plt.show()
-
-
-def plot_field_strength_correlation(m, save=None):
-    """
-    Bar chart of divergence Pearson r by magnetic field strength regime.
-    Only produced when bz is provided.
-    """
-    if m["bz"] is None:
-        print("[INFO] No magnetogram provided — skipping field strength plot.")
-        return
-
-    labels = ["Quiet\n|B| < 50 G", "Medium\n50–300 G", "Strong\n|B| > 300 G"]
-    keys   = ["r_div_quiet", "r_div_medium", "r_div_strong"]
-    vals   = [m.get(k, np.nan) for k in keys]
-    colors = [CGOOD, C4K, C2K]
-
-    fig, ax = plt.subplots(figsize=(5, 4.5))
-    bars = ax.bar(np.arange(3), vals, color=colors, width=0.5, zorder=3)
-    ax.axhline(0, color=CGREY, lw=0.7, ls="--")
-    ax.axhline(1, color=CGOOD, lw=0.6, ls=":", label="Perfect = 1")
-    ax.set_ylim(-0.1, 1.15)
-    ax.set_xticks(np.arange(3)); ax.set_xticklabels(labels, fontsize=9)
-    ax.set_ylabel("Pearson $r$  ($\\nabla\\cdot v$, normalised)")
-    ax.set_title("Divergence correlation vs field strength\n"
-                 "(tests whether magnetic suppression of granulation limits accuracy)")
-    ax.legend(fontsize=8)
-    for bar, v in zip(bars, vals):
-        if not np.isnan(v):
-            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                    f"{v:.3f}", ha="center", va="bottom", fontsize=8)
-    plt.tight_layout()
-    if save: plt.savefig(save)
-    plt.show()
-
-
-def plot_metric_summary(m, save=None):
-    """Three-panel summary: amplitude, structural, inflow-zone breakdown."""
-    has_bz = m["bz"] is not None
-    fig, axes = plt.subplots(1, 3, figsize=(14, 5),
-                             gridspec_kw={"wspace": 0.4})
-    fig.suptitle("Scalar Metric Summary", fontsize=11)
-
-    # panel 1 — amplitude (raw, physical)
-    ax = axes[0]
-    labels = ["Speed\nRMSE", "Speed\nBias", "Div\nRMSE", "Div\nBias", "Speed\nRatio"]
-    vals   = [m["rmse_speed_raw"], m["bias_speed_raw"],
-              m["rmse_div_raw"],   m["bias_div_raw"],
-              m["amplitude_ratio"]]
-    colors = [C4K, C2K, C4K, C2K, CGOOD]
-    bars   = ax.bar(np.arange(5), vals, color=colors, width=0.55, zorder=3)
-    ax.axhline(0, color=CGREY, lw=0.7, ls="--")
-    ax.set_xticks(np.arange(5)); ax.set_xticklabels(labels, fontsize=8)
-    ax.set_title("Amplitude metrics\n(raw — physical units)", fontsize=9)
-    ax.set_ylabel("m s$^{-1}$ / s$^{-1}$ / ratio")
-    for bar, v in zip(bars, vals):
-        ypos = bar.get_height() if v >= 0 else 0
-        ax.text(bar.get_x() + bar.get_width()/2, ypos,
-                f"{v:.3g}", ha="center", va="bottom", fontsize=7.5)
-
-    # panel 2 — structural (normalised)
-    ax = axes[1]
-    labels2 = ["$r_{v_x}$", "$r_{v_y}$", "$r_{speed}$",
-               "$r_{\\nabla v}$", "Vector\nskill"]
-    vals2   = [m["r_vx"], m["r_vy"], m["r_speed"],
-               m["r_div"], m["vector_skill"]]
-    bars2   = ax.bar(np.arange(5), vals2, color=C4K, width=0.55, zorder=3)
-    ax.axhline(0, color=CGREY, lw=0.7, ls="--")
-    ax.axhline(1, color=CGOOD, lw=0.6, ls=":", label="Perfect = 1")
-    ax.set_ylim(-0.1, 1.15)
-    ax.set_xticks(np.arange(5)); ax.set_xticklabels(labels2, fontsize=8)
-    ax.set_title("Structural metrics\n(normalised — amplitude-independent)", fontsize=9)
-    ax.set_ylabel("Pearson $r$ / vector skill")
-    ax.legend(fontsize=7)
-    for bar, v in zip(bars2, vals2):
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                f"{v:.3f}", ha="center", va="bottom", fontsize=7.5)
-
-    # panel 3 — inflow zone breakdown (uses 4K trough boundary for display)
-    ax = axes[2]
-    t4 = m["trough_Mm_4k"]
-    t2 = m["trough_Mm_2k"]
-    if has_bz:
-        labels3 = ["Global", "Inflow\nzone",
-                   f"Inner 4K\n(<{t4:.0f} Mm)",
-                   f"Outer 4K\n(≥{t4:.0f} Mm)",
-                   f"Inner 2K\n(<{t2:.0f} Mm)",
-                   f"Outer 2K\n(≥{t2:.0f} Mm)",
-                   "AR mask\n(Bz)"]
-        vals3   = [m["r_div"], m["r_div_inflow"],
-                   m["r_div_inner_4k"], m["r_div_outer_4k"],
-                   m["r_div_inner_2k"], m["r_div_outer_2k"],
-                   m["r_div_ar"]]
-        colors3 = [C4K, C2K, C4K, C4K, C2K, C2K, "#9467bd"]
+    if longitude is not None and latitude is not None:
+        X, Y = np.meshgrid(longitude[::s], latitude[::s])
     else:
-        labels3 = ["Global", "Inflow\nzone",
-                   f"Inner 4K\n(<{t4:.0f} Mm)",
-                   f"Outer 4K\n(≥{t4:.0f} Mm)",
-                   f"Inner 2K\n(<{t2:.0f} Mm)",
-                   f"Outer 2K\n(≥{t2:.0f} Mm)"]
-        vals3   = [m["r_div"], m["r_div_inflow"],
-                   m["r_div_inner_4k"], m["r_div_outer_4k"],
-                   m["r_div_inner_2k"], m["r_div_outer_2k"]]
-        colors3 = [C4K, C2K, C4K, C4K, C2K, C2K]
+        ny, nx = vx.shape
+        X, Y   = np.meshgrid(np.arange(0, nx, s), np.arange(0, ny, s))
 
-    bars3 = ax.bar(np.arange(len(labels3)), vals3,
-                   color=colors3, width=0.55, zorder=3)
-    ax.axhline(0, color=CGREY, lw=0.7, ls="--")
-    ax.axhline(1, color=CGOOD, lw=0.6, ls=":")
-    ax.set_ylim(-0.1, 1.15)
-    ax.set_xticks(np.arange(len(labels3)))
-    ax.set_xticklabels(labels3, fontsize=7)
-    ax.set_title("Divergence $r$ by region\n(normalised)", fontsize=9)
-    ax.set_ylabel("Pearson $r$")
-    for bar, v in zip(bars3, vals3):
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                f"{v:.3f}", ha="center", va="bottom", fontsize=7.5)
+    X = X[:vx_s.shape[0], :vx_s.shape[1]]
+    Y = Y[:vx_s.shape[0], :vx_s.shape[1]]
 
-    plt.tight_layout()
-    if save: plt.savefig(save)
+    ax.quiver(X, Y, vx_s, vy_s,
+              color=color, scale=scale, alpha=alpha,
+              width=0.003, headwidth=3, headlength=4,
+              headaxislength=3.5, pivot="mid")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLOT 0 — FLOW MAPS  (2 cadences × 2 instruments, single figure)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def plot_flow_maps(m15, m30, save=None):
+    """
+    2 rows × 2 columns showing raw LCT speed [m/s] + quiver arrows.
+
+      Row 0 — 15 min cadence:  HMI 4K  |  PMI 2K
+      Row 1 — 30 min cadence:  HMI 4K  |  PMI 2K
+
+    A single shared colourbar (right) and shared quiver scale make the
+    amplitude difference visible across both instruments and both cadences.
+    Row labels are placed as y-axis titles on the left column.
+    """
+    lon = m15.get("longitude")
+    lat = m15.get("latitude")
+
+    vmax_spd = max(np.nanpercentile(m15["speed_2k"], 98),
+                   np.nanpercentile(m30["speed_2k"], 98))
+
+    spd_ref      = np.nanpercentile(m15["speed_4k"], 95)
+    nx_grid      = m15["speed_4k"].shape[1] / QUIVER_STRIDE
+    quiver_scale = spd_ref * nx_grid * 0.3
+
+    if lon is not None and lat is not None:
+        lon_span = abs(lon[-1] - lon[0])
+        lat_span = abs(lat[-1] - lat[0])
+        asp = lat_span / lon_span if lon_span > 0 else "auto"
+    else:
+        asp = "equal"
+
+    kw_img = _axis_kw(lon, lat)
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9),
+                             gridspec_kw={"hspace": 0.08, "wspace": 0.08},
+                             layout=None)
+    fig.suptitle(
+        "LCT flow speed  [m s$^{-1}$]\n"
+        "Amplitude difference driven by PSF broadening",
+        fontsize=13, y = 0.92
+    )
+
+    row_data = [(m15, "15 min"), (m30, "30 min")]
+    col_data = [
+        ("speed_4k", "vx_4k", "vy_4k", "HMI 4K"),
+        ("speed_2k", "vx_2k", "vy_2k", "PMI 2K"),
+    ]
+
+    ims = []
+    for row_i, (m, row_label) in enumerate(row_data):
+        for col_i, (spd_key, vx_key, vy_key, col_label) in enumerate(col_data):
+            ax = axes[row_i, col_i]
+            im = ax.imshow(m[spd_key], cmap="magma", vmin=0, vmax=vmax_spd,
+                           aspect=asp, **kw_img)
+            _set_latlon_ticks(ax, lon, lat)
+            _quiver(ax, m[vx_key], m[vy_key], lon, lat,
+                    color="white", scale=quiver_scale)
+            for sp in ax.spines.values():
+                sp.set_linewidth(0.8)
+            if row_i == 0:
+                ax.set_title(col_label, fontsize=13, pad=6)
+            if col_i == 0:
+                ax.set_ylabel(f"{row_label}\n\nLatitude [°]", fontsize=12)
+            else:
+                ax.set_ylabel("")
+            ims.append(im)
+
+        ratio = m["amplitude_ratio"]
+        axes[row_i, 1].text(
+            1.02, 0.5, f"2K/4K = {ratio:.2f}×",
+            transform=axes[row_i, 1].transAxes,
+            fontsize=10, color=CGREY, style="italic",
+            va="center", ha="left", rotation=90
+        )
+
+    fig.subplots_adjust(right=0.88)
+    cax = fig.add_axes([0.90, axes[1, 1].get_position().y0,
+                        0.018,
+                        axes[0, 1].get_position().y1 - axes[1, 1].get_position().y0])
+    cb = fig.colorbar(ims[0], cax=cax)
+    cb.set_label("Speed  [m s$^{-1}$]", fontsize=12)
+    cb.ax.tick_params(direction="in")
+    cb.outline.set_linewidth(0.8)
+
+    if save:
+        plt.savefig(save)
     plt.show()
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLOT 1 — DIVERGENCE MAPS  (2 cadences × 3 cols, single figure)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def plot_divergence_maps(m15, m30, save=None):
+    """
+    2 rows × 3 columns — physical divergence [s⁻¹]:
+
+      Row 0 — 15 min:  HMI 4K  |  PMI 2K  |  Residual 2K−4K
+      Row 1 — 30 min:  HMI 4K  |  PMI 2K  |  Residual 2K−4K
+
+    Shared symmetric colour scale across all six panels.
+    Overlays: AR mask (dashed), Bz polarity contours.
+    Legend placed below the figure, outside all panels.
+    """
+    lon = m15.get("longitude")
+    lat = m15.get("latitude")
+
+    if lon is not None and lat is not None:
+        lon_span = abs(lon[-1] - lon[0])
+        lat_span = abs(lat[-1] - lat[0])
+        asp = lat_span / lon_span if lon_span > 0 else "auto"
+    else:
+        asp = "equal"
+
+    all_divs = np.concatenate([
+        m15["div_4k_phys"].ravel(), m15["div_2k_phys"].ravel(),
+        m30["div_4k_phys"].ravel(), m30["div_2k_phys"].ravel(),
+    ])
+    vmax_div = np.nanpercentile(np.abs(all_divs), 99)
+
+    kw_img = _axis_kw(lon, lat)
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 9),
+                             gridspec_kw={"hspace": 0.08, "wspace": 0.08},
+                             layout=None)
+    fig.suptitle(
+        r"Divergence  $\nabla\cdot\mathbf{v}$  [s$^{-1}$]",
+        fontsize=18, y=0.9
+    )
+    fig.subplots_adjust(right=0.88)
+
+    row_data = [(m15, "15 min"), (m30, "30 min")]
+
+    last_ims = {}
+    for row_i, (m, row_label) in enumerate(row_data):
+        d4, d2 = m["div_4k_phys"], m["div_2k_phys"]
+        panels = [
+            (d4,      "HMI 4K"),
+            (d2,      "PMI 2K"),
+            (d2 - d4, "Residual  2K$-$4K"),
+        ]
+        for col_i, (arr, col_title) in enumerate(panels):
+            ax = axes[row_i, col_i]
+            im = ax.imshow(arr, cmap="PuOr_r",
+                           vmin=-vmax_div, vmax=vmax_div,
+                           aspect=asp, **kw_img)
+            _set_latlon_ticks(ax, lon, lat)
+            for sp in ax.spines.values():
+                sp.set_linewidth(0.8)
+            if m["ar_mask"] is not None:
+                _overlay_ar_mask(ax, m["ar_mask"], lon, lat)
+            if m["bz"] is not None:
+                _overlay_bz(ax, m["bz"], lon, lat)
+
+            if row_i == 0:
+                ax.set_title(col_title, fontsize=13, pad=6)
+            if col_i == 0:
+                ax.set_ylabel(f"{row_label}\n\nLatitude [°]", fontsize=12)
+            else:
+                ax.set_ylabel("")
+
+            if col_i == 2:
+                last_ims[row_i] = im
+
+    for row_i in range(2):
+        ax_ref = axes[row_i, 2]
+        pos = ax_ref.get_position()
+        cax = fig.add_axes([0.895, pos.y0, 0.015, pos.height])
+        cb = fig.colorbar(last_ims[row_i], cax=cax)
+        cb.set_label("s$^{-1}$", fontsize=11)
+        cb.ax.tick_params(direction="in", labelsize=10)
+        cb.outline.set_linewidth(0.8)
+
+    # legend — no inflow mask entry
+    legend_handles = []
+    if m15["ar_mask"] is not None:
+        legend_handles.append(
+            mlines.Line2D([], [], color="#555555", ls="--", lw=1.2,
+                          label=f"AR mask  $|B_z| > {MAG_THRESHOLD_G:.0f}$ G"))
+    if m15["bz"] is not None:
+        legend_handles += [
+            mlines.Line2D([], [], color="white", ls="-", lw=2.0,
+                          label="$B_+$ contours",
+                          path_effects=[
+                              mpe.withStroke(linewidth=3, foreground="#888888")]),
+            mlines.Line2D([], [], color="black", ls="--", lw=1.2,
+                          label="$B_-$ contours"),
+        ]
+    if legend_handles:
+        fig.legend(handles=legend_handles, loc="lower center",
+                   ncol=len(legend_handles), framealpha=0.92,
+                   fontsize=11, bbox_to_anchor=(0.5, 0.0))
+
+    if save:
+        plt.savefig(save, bbox_inches="tight")
+    plt.show()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLOT 2 — RADIAL DIVERGENCE PROFILES  (side-by-side cadence comparison)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def plot_radial_profiles_comparison(m15, m30, save=None):
+    """
+    Two-panel figure (shared y-axis) comparing radial divergence profiles.
+
+    Left  — 15-min cadence
+    Right — 30-min cadence
+
+    Each panel overlays HMI 4K (blue solid) and PMI 2K (red dashed).
+    Dotted verticals mark trough positions; dash-dot verticals mark the
+    inflow extent (first zero crossing after the trough).
+    A text box annotates the trough shift between instruments.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.5), sharey=True,
+                             gridspec_kw={"wspace": 0.04})
+
+    for ax, (m, title) in zip(axes, [(m15, "15 min cadence"),
+                                      (m30, "30 min cadence")]):
+        r  = m["radial_r_Mm"]
+        p4 = m["radial_p4"]
+        p2 = m["radial_p2"]
+        t4 = m["trough_Mm_4k"]
+        t2 = m["trough_Mm_2k"]
+        e4 = m["extent_Mm_4k"]
+        e2 = m["extent_Mm_2k"]
+
+        ax.plot(r, p4, color=C4K, lw=2.2, label="HMI 4K")
+        ax.plot(r, p2, color=C2K, lw=2.2, ls="--", label="PMI 2K")
+        ax.axhline(0, color=CGREY, lw=0.9)
+
+        ax.axvline(t4, color=C4K, lw=1.1, ls=":",
+                   label=f"Trough 4K  {t4:.0f} Mm")
+        ax.axvline(t2, color=C2K, lw=1.1, ls=":",
+                   label=f"Trough 2K  {t2:.0f} Mm")
+        if np.isfinite(e4):
+            ax.axvline(e4, color=C4K, lw=1.1, ls="-.",
+                       label=f"Extent 4K  {e4:.0f} Mm")
+        if np.isfinite(e2):
+            ax.axvline(e2, color=C2K, lw=1.1, ls="-.",
+                       label=f"Extent 2K  {e2:.0f} Mm")
+
+        ax.set_title(title, pad=8)
+        ax.set_xlabel("Radius from inflow centre [Mm]")
+        ax.grid(True, color="#dddddd", lw=0.6, ls="--")
+        ax.legend(loc="upper right")
+
+        shift     = m["trough_shift_Mm"]
+        direction = "outward" if shift > 0 else "inward"
+        ax.text(0.03, 0.97,
+                f"Trough shift: {abs(shift):.1f} Mm {direction}",
+                transform=ax.transAxes, fontsize=10, va="top", color=CGREY,
+                bbox=dict(boxstyle="round,pad=0.35", fc="white",
+                          ec="#bbbbbb", lw=0.8))
+
+    axes[0].set_ylabel("Mean normalised divergence [arb.]")
+    fig.suptitle("Azimuthally averaged normalised divergence",
+                 y=1.01)
+    fig.text(0.5, -0.02,
+             "Dotted verticals = trough location   "
+             "Dash-dot verticals = inflow extent (zero crossing)",
+             ha="center", fontsize=10, color=CGREY, style="italic")
+    if save:
+        plt.savefig(save)
+    plt.show()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PLOT 3 — STRUCTURAL METRIC BAR CHART  (grouped by cadence)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def plot_metric_comparison(m15, m30, save=None):
+    """
+    Grouped bar chart of five structural metrics (normalised, amplitude-free):
+
+      r_speed       — speed Pearson r, full domain
+      r_div         — divergence Pearson r, full domain
+      r_div_quiet   — divergence Pearson r, quiet-field pixels (|B| < 50 G)
+      r_div_medium  — divergence Pearson r, medium-field pixels (50–300 G)
+      r_div_strong  — divergence Pearson r, strong-field pixels (|B| > 300 G)
+
+    Splitting by field strength tests whether the cadence degradation is
+    uniform or concentrated in magnetically active regions (where granulation
+    is suppressed and LCT has lower SNR at longer cadence).
+
+    Requires bz to have been passed to compute_all(); bars will show nan
+    if the magnetogram is unavailable.
+
+    Green = 15 min,  orange = 30 min.
+    Δ annotations above each group show the cadence-induced change.
+    """
+    metric_keys   = ["r_speed", "r_div", "r_div_quiet", "r_div_medium", "r_div_strong"]
+    metric_labels = [
+        "$r_{\\mathrm{speed}}$\n(full domain)",
+        "$r_{\\nabla v}$\n(full domain)",
+        "$r_{\\nabla v}$\nquiet  $|B|<50$ G",
+        "$r_{\\nabla v}$\nmedium  $50$–$300$ G",
+        "$r_{\\nabla v}$\nstrong  $|B|>300$ G",
+    ]
+
+    vals_15 = [m15.get(k, np.nan) for k in metric_keys]
+    vals_30 = [m30.get(k, np.nan) for k in metric_keys]
+
+    x     = np.arange(len(metric_keys))
+    width = 0.28
+
+    fig, ax = plt.subplots(figsize=(13, 11))
+
+    bars_15 = ax.bar(x - width/2, vals_15, width, color=CGOOD, label="15 min",
+                     zorder=3, edgecolor="white", linewidth=0.8)
+    bars_30 = ax.bar(x + width/2, vals_30, width, color=C30,  label="30 min",
+                     zorder=3, edgecolor="white", linewidth=0.8)
+
+    ax.axhline(1, color=CGREY, lw=1.2, ls=":",  zorder=2, label="Perfect = 1")
+    ax.axhline(0, color=CGREY, lw=0.8, ls="--", zorder=2)
+
+    for bar, v in zip(bars_15, vals_15):
+        if np.isfinite(v):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.015,
+                    f"{v:.3f}", ha="center", va="bottom",
+                    fontsize=15, color="#1a5c1a", fontweight="bold")
+    for bar, v in zip(bars_30, vals_30):
+        if np.isfinite(v):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.015,
+                    f"{v:.3f}", ha="center", va="bottom",
+                    fontsize=15, color="#8b3a00", fontweight="bold")
+
+    for i, (v15, v30) in enumerate(zip(vals_15, vals_30)):
+        if not (np.isfinite(v15) and np.isfinite(v30)):
+            continue
+        delta = v30 - v15
+        sign  = "+" if delta >= 0 else ""
+        ax.text(x[i], max(v15, v30) + 0.08,
+                f"$\\Delta${sign}{delta:.3f}",
+                ha="center", va="bottom", fontsize=13,
+                color="#444444", style="italic")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(metric_labels, fontsize=14)
+    ax.tick_params(axis="y", labelsize=13)
+    ax.set_ylim(-0.05, 1.38)
+    ax.set_ylabel("Pearson $r$  [normalised fields]", fontsize=18)
+    ax.set_title(
+        "Structural fidelity: PMI 2K vs HMI 4K\n"
+        "Grouped by cadence  (15 min vs 30 min)",
+        fontsize=20, pad=12
+    )
+    ax.legend(loc="lower right", fontsize=14)
+    ax.grid(True, axis="y", color="#e0e0e0", lw=0.6, ls="--", zorder=0)
+
+    plt.tight_layout()
+    if save:
+        plt.savefig(save)
+    plt.show()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # MASTER ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_all(vx_4k, vy_4k, vx_2k, vy_2k,
-            bz=None,
-            pixel_scale_deg=PIXEL_SCALE_DEG,
-            save_prefix=None):
+def run_paper_plots(m15, m30, save_prefix=None):
     """
-    Compute everything and produce all plots.
+    Produce all paper plots and print the summary table.
 
     Parameters
     ----------
-    vx_4k, vy_4k    : HMI 4K LCT velocities [m/s]
-    vx_2k, vy_2k    : PMI 2K LCT velocities [m/s]
-    bz               : LOS magnetogram [Gauss] on flow-map grid, or None.
-                       Use downsample_bz(bz_highres, vx_4k.shape) if needed.
-    pixel_scale_deg  : degrees per pixel (default 0.5)
-    save_prefix      : e.g. "my_ar" saves my_ar_velocity_maps.png etc.
-                       None = display only
+    m15, m30     : dicts from compute_all() for 15-min and 30-min datasets
+    save_prefix  : e.g. "ar_inflow" → saves ar_inflow_flowmaps.pdf etc.
+                   None = display only
 
-    Returns
-    -------
-    m : dict with all metrics and arrays
+    Files produced  (all PDF, vector graphics)
+    -------------------------------------------
+    <prefix>_flowmaps.pdf  — raw speed + quiver, 15 & 30 min combined (2×2)
+    <prefix>_divmaps.pdf   — physical divergence maps, 15 & 30 min combined (2×3)
+    <prefix>_radial.pdf    — radial profile side-by-side comparison
+    <prefix>_metrics.pdf   — structural metric grouped bar chart
     """
-    m = compute_all(vx_4k, vy_4k, vx_2k, vy_2k,
-                    bz=bz, pixel_scale_deg=pixel_scale_deg)
-
     def _s(tag):
-        return f"{save_prefix}_{tag}.png" if save_prefix else None
+        return f"{save_prefix}_{tag}.pdf" if save_prefix else None
 
-    t4 = m["trough_Mm_4k"]
-    t2 = m["trough_Mm_2k"]
-    sh = m["trough_shift_Mm"]
+    plot_flow_maps(m15, m30,                   save=_s("flowmaps"))
+    plot_divergence_maps(m15, m30,             save=_s("divmaps"))
+    plot_radial_profiles_comparison(m15, m30,  save=_s("radial"))
+    plot_metric_comparison(m15, m30,           save=_s("metrics"))
 
-    print("\n── AMPLITUDE  (raw, physical units) ─────────────────────────────")
-    print(f"  Speed amplitude ratio 2K/4K : {m['amplitude_ratio']:.3f}x")
-    print(f"  Speed RMSE                  : {m['rmse_speed_raw']:.2f} m/s")
-    print(f"  Speed bias (2K−4K)          : {m['bias_speed_raw']:.2f} m/s")
-    print(f"  Divergence RMSE             : {m['rmse_div_raw']:.3g} s⁻¹")
-    print(f"  Divergence bias (2K−4K)     : {m['bias_div_raw']:.3g} s⁻¹")
-    print("\n── STRUCTURE  (normalised, amplitude-independent) ────────────────")
-    print(f"  Pearson r  vx               : {m['r_vx']:.3f}")
-    print(f"  Pearson r  vy               : {m['r_vy']:.3f}")
-    print(f"  Pearson r  speed            : {m['r_speed']:.3f}")
-    print(f"  Pearson r  divergence       : {m['r_div']:.3f}")
-    print(f"  Vector skill score          : {m['vector_skill']:.3f}")
-    print("\n── INFLOW ZONE  (normalised divergence) ──────────────────────────")
-    print(f"  r  global                        : {m['r_div']:.3f}")
-    print(f"  r  inflow zone (bot. {INFLOW_PERCENTILE}%)        : {m['r_div_inflow']:.3f}")
-    print(f"\n  Trough radius  HMI 4K            : {t4:.1f} Mm")
-    print(f"  Trough radius  PMI 2K            : {t2:.1f} Mm")
-    direction = 'outward' if sh > 0 else 'inward'
-    print(f"  Trough shift   2K vs 4K          : {abs(sh):.1f} Mm {direction}")
-    print(f"\n  r  inner  HMI boundary (r < {t4:.0f} Mm) : {m['r_div_inner_4k']:.3f}")
-    print(f"  r  outer  HMI boundary (r >= {t4:.0f} Mm): {m['r_div_outer_4k']:.3f}")
-    print(f"  r  inner  PMI boundary (r < {t2:.0f} Mm) : {m['r_div_inner_2k']:.3f}")
-    print(f"  r  outer  PMI boundary (r >= {t2:.0f} Mm): {m['r_div_outer_2k']:.3f}")
-    if m["bz"] is not None:
-        print(f"  r  AR mask (Bz-based)            : {m['r_div_ar']:.3f}")
-        print("\n── BY FIELD STRENGTH  (normalised divergence) ────────────────────")
-        for label in ["quiet", "medium", "strong"]:
-            print(f"  r  {label:7s}                       : "
-                  f"{m.get(f'r_div_{label}', np.nan):.3f}")
-
-    plot_velocity_maps(m,              save=_s("velocity_maps"))
-    plot_divergence_maps(m,            save=_s("divergence_maps"))
-    plot_psd(m,                        save=_s("psd"))
-    plot_scatter(m,                    save=_s("scatter"))
-    plot_radial_profile(m,             save=_s("radial_profile"))
-    plot_field_strength_correlation(m, save=_s("field_strength"))
-    plot_metric_summary(m,             save=_s("metric_summary"))
-
-    return m
+    _print_table(m15, m30)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# VALIDATION & DIAGNOSTICS
-# ══════════════════════════════════════════════════════════════════════════════
-
-def print_physical_validation(m, pixel_scale_deg=PIXEL_SCALE_DEG):
-    """
-    Print physically meaningful inflow diagnostics vs literature.
-    Expected from Loptien et al. (2017): inflow ~20-50 m/s, up to 10 deg from AR.
-    """
-    div_4k   = m["div_4k_phys"]
-    div_2k   = m["div_2k_phys"]
-    speed_4k = m["speed_4k"]
-    speed_2k = m["speed_2k"]
-    imask    = m["inflow_mask"]
-    p4       = m["radial_p4"]
-    p2       = m["radial_p2"]
-    r        = m["radial_r_Mm"]
-    t4       = m["trough_Mm_4k"]
-    t2       = m["trough_Mm_2k"]
-    sh       = m["trough_shift_Mm"]
-
-    def _to_deg(Mm):
-        return Mm / R_SUN_MM * (180 / np.pi)
-
-    print("\n── PHYSICAL VALIDATION  (4K vs literature) ──────────────────────")
-
-    print(f"\n  Inflow zone velocities (bottom {INFLOW_PERCENTILE}% divergence mask):")
-    print(f"    Mean speed   4K : {np.mean(speed_4k[imask]):.1f} m/s")
-    print(f"    Mean speed   2K : {np.mean(speed_2k[imask]):.1f} m/s")
-    print(f"    Median speed 4K : {np.median(speed_4k[imask]):.1f} m/s")
-    print(f"    Max speed    4K : {np.max(speed_4k[imask]):.1f} m/s")
-    print(f"    Literature      : 20-50 m/s  (Loptien et al. 2017)")
-
-    print(f"\n  Inflow zone divergence (bottom {INFLOW_PERCENTILE}% mask):")
-    print(f"    Mean  div 4K : {np.mean(div_4k[imask]):.3e} s⁻¹")
-    print(f"    Min   div 4K : {np.min(div_4k[imask]):.3e} s⁻¹  (peak inflow)")
-    print(f"    Mean  div 2K : {np.mean(div_2k[imask]):.3e} s⁻¹")
-    print(f"    Literature   : ~1e-6 to 1e-5 s⁻¹")
-
-    direction = "outward" if sh > 0 else "inward"
-    print(f"\n  Inflow trough radius:")
-    print(f"    HMI 4K      : {t4:.1f} Mm  =  {_to_deg(t4):.2f} deg")
-    print(f"    PMI 2K      : {t2:.1f} Mm  =  {_to_deg(t2):.2f} deg")
-    print(f"    Shift 2K-4K : {abs(sh):.1f} Mm {direction}  "
-          f"(PSF smearing displaces apparent inflow annulus)")
-    print(f"    Literature  : 30-60 Mm  (~5-10 deg)  (Loptien et al. 2017)")
-
-    print(f"\n  Inflow spatial extent (zero crossing after trough):")
-    for label, extent_Mm in [("HMI 4K", m["extent_Mm_4k"]),
-                               ("PMI 2K", m["extent_Mm_2k"])]:
-        if np.isfinite(extent_Mm):
-            print(f"    {label}  : {extent_Mm:.1f} Mm  =  {_to_deg(extent_Mm):.2f} deg")
-        else:
-            print(f"    {label}  : no zero crossing within patch — "
-                  f"inflow extends beyond boundary")
-    print(f"    Literature  : up to ~10 deg  (Loptien et al. 2017)")
-
-    moat_speed = (np.mean(speed_4k[m["ar_mask"]])
-                  if m["ar_mask"] is not None else np.nan)
-    print(f"\n  AR core (moat) outflow:")
-    print(f"    Mean speed inside AR mask 4K : {moat_speed:.1f} m/s")
-    print(f"    Peak norm. div at r=0  4K    : {p4[0]:.3f}  (positive = outflow)")
-    print(f"    Peak norm. div at r=0  2K    : {p2[0]:.3f}")
-    print(f"    Literature moat extent       : ~30-40 Mm beyond penumbra")
-
-    print(f"\n  Divergence r by region (each instrument's own trough boundary):")
-    print(f"    Inner 4K  (r < {t4:.0f} Mm)  : {m['r_div_inner_4k']:.3f}")
-    print(f"    Outer 4K  (r >= {t4:.0f} Mm) : {m['r_div_outer_4k']:.3f}")
-    print(f"    Inner 2K  (r < {t2:.0f} Mm)  : {m['r_div_inner_2k']:.3f}")
-    print(f"    Outer 2K  (r >= {t2:.0f} Mm) : {m['r_div_outer_2k']:.3f}")
-
-
-def print_psd_peaks(m):
-    """Print the spatial scale at peak power for each PSD curve."""
-    print("\n── PSD PEAKS  (spatial scale at maximum power) ───────────────────")
-    for label, tag in [
-        ("HMI 4K  raw",        "4k_raw"),
-        ("PMI 2K  raw",        "2k_raw"),
-        ("HMI 4K  normalised", "4k_norm"),
-        ("PMI 2K  normalised", "2k_norm"),
-    ]:
-        print(f"  {label:25s} : peak at {m[f'psd_peak_scale_{tag}']:.1f} Mm")
-
-    scale = m["psd_k"]
-    sel   = (scale > 2.0) & np.isfinite(scale)
-    ratio_raw  = m["psd_ratio_raw"][sel]
-    ratio_norm = m["psd_ratio_norm"][sel]
-    scale_sel  = scale[sel]
-    print(f"\n  Raw ratio peak (max overestimation)  : "
-          f"{scale_sel[np.nanargmax(ratio_raw)]:.1f} Mm  "
-          f"(ratio = {np.nanmax(ratio_raw):.2f}x)")
-    print(f"  Norm ratio worst deviation from 1    : "
-          f"{scale_sel[np.nanargmax(np.abs(ratio_norm - 1))]:.1f} Mm  "
-          f"(ratio = {ratio_norm[np.nanargmax(np.abs(ratio_norm - 1))]:.2f}x)")
+def _print_table(m15, m30):
+    """Print amplitude + spatial numbers ready to copy into a paper table."""
+    print("\n" + "═"*65)
+    print(f"  {'Metric':<35}  {'15 min':>8}  {'30 min':>8}")
+    print("─"*65)
+    rows = [
+        ("Amplitude ratio 2K/4K",          "amplitude_ratio",  ".3f"),
+        ("Speed RMSE [m/s]",               "rmse_speed_raw",   ".1f"),
+        ("Speed bias 2K−4K [m/s]",         "bias_speed_raw",   ".1f"),
+        ("Div RMSE [s⁻¹]",                 "rmse_div_raw",     ".3g"),
+        ("Div bias 2K−4K [s⁻¹]",           "bias_div_raw",     ".3g"),
+        ("",                               None,               ""),
+        ("Trough radius HMI 4K [Mm]",      "trough_Mm_4k",     ".1f"),
+        ("Trough radius PMI 2K [Mm]",      "trough_Mm_2k",     ".1f"),
+        ("Trough shift 2K−4K [Mm]",        "trough_shift_Mm",  ".1f"),
+        ("Inflow extent HMI 4K [Mm]",      "extent_Mm_4k",     ".1f"),
+        ("Inflow extent PMI 2K [Mm]",      "extent_Mm_2k",     ".1f"),
+        ("",                               None,               ""),
+        ("Pearson r  vx",                  "r_vx",             ".3f"),
+        ("Pearson r  vy",                  "r_vy",             ".3f"),
+        ("Pearson r  speed",               "r_speed",          ".3f"),
+        ("Pearson r  divergence (global)", "r_div",            ".3f"),
+        ("Pearson r  divergence (inflow)", "r_div_inflow",     ".3f"),
+        ("Pearson r  divergence (quiet)",  "r_div_quiet",      ".3f"),
+        ("Pearson r  divergence (medium)", "r_div_medium",     ".3f"),
+        ("Pearson r  divergence (strong)", "r_div_strong",     ".3f"),
+        ("Vector skill score",             "vector_skill",     ".3f"),
+    ]
+    for label, key, fmt in rows:
+        if key is None:
+            print(); continue
+        v15 = m15.get(key, np.nan)
+        v30 = m30.get(key, np.nan)
+        v15_s = f"{v15:{fmt}}" if np.isfinite(float(v15)) else "—"
+        v30_s = f"{v30:{fmt}}" if np.isfinite(float(v30)) else "—"
+        print(f"  {label:<35}  {v15_s:>8}  {v30_s:>8}")
+    print("═"*65 + "\n")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -994,15 +896,13 @@ def print_psd_peaks(m):
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    vx_4k, vy_4k, vx_2k, vy_2k, bz = load_data()
+    vx_4k_15, vy_4k_15, vx_2k_15, vy_2k_15, bz_15, lon_15, lat_15 = load_data("15min")
+    m15 = compute_all(vx_4k_15, vy_4k_15, vx_2k_15, vy_2k_15,
+                      bz=bz_15, longitude=lon_15, latitude=lat_15)
 
-    m = run_all(
-        vx_4k, vy_4k, vx_2k, vy_2k,
-        bz=bz,
-        pixel_scale_deg=PIXEL_SCALE_DEG,
-        save_prefix="ar_inflow",   # set None to display only
-    )
+    vx_4k_30, vy_4k_30, vx_2k_30, vy_2k_30, bz_30, lon_30, lat_30 = load_data("30min")
+    m30 = compute_all(vx_4k_30, vy_4k_30, vx_2k_30, vy_2k_30,
+                      bz=bz_30, longitude=lon_30, latitude=lat_30)
 
-    print_physical_validation(m)
-    print_psd_peaks(m)
+    run_paper_plots(m15, m30, save_prefix="ar_inflow")
 # %%

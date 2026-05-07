@@ -251,9 +251,9 @@ def odr_fit(ref, test, sx=None, sy=None):
 
     # error estimates — use sensible defaults if not provided
     if sx is None:
-        sx = np.std(x) * 0.05
+        sx = np.std(x) * 0.01
     if sy is None:
-        sy = np.std(y) * 0.10
+        sy = np.std(y) * 0.01
 
     linear = Model(lambda B, x: B[0]*x + B[1])
     data   = RealData(x, y, sx=sx, sy=sy)

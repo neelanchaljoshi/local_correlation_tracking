@@ -7,7 +7,7 @@
 #SBATCH --mail-type=FAIL,INVALID_DEPEND,REQUEUE,STAGE_OUT,END
 #SBATCH --mail-user=joshin@mps.mpg.de
 #SBATCH --output=logs/%x_slurm%A_%a.log
-#SBATCH --job-name=2017_360_030_diff_rot_5deg_gran_2k
+#SBATCH --job-name=2020_360_030_diff_rot_5deg_gran_2k
 #SBATCH --cpus-per-task=1
 ##SBATCH --exclude=swan[18,27,28]
 #SBATCH --array=0-364

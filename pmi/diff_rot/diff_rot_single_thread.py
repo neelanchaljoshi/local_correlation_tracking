@@ -276,7 +276,7 @@ if downsample:
 else:
 	resolution = '4k'
 	infile_fmt = '/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.ic_45s/keys_new_swan/keys-%Y.fits'
-outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/data_{resolution}_{dstart.year}/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_diff_rot_5deg_gran_{resolution}.hdf5'
+outfile = f'/data/seismo/joshin/pipeline-test/local_correlation_tracking/pmi/diff_rot/data/data_for_im/data_gran_{resolution}_{dstart.year}/{args.start}_nt_{nt}_dspan_{args.dspan}_dstep_{args.dstep}_dt_{cadence_interp}_diff_rot_5deg_gran_{resolution}.hdf5'
 segname = 'continuum.fits'
 
 ## mapping parameters
@@ -341,8 +341,8 @@ psf_pmi = airy_disk_psf((psf_size, psf_size), radius_pmi)
 psf_rel = fftconvolve(psf_pmi, psf_hmi[::-1, ::-1], mode='same')
 
 ## output parameters
-clatarr = np.arange(-60, 61, 2.5)
-clngarr = np.arange(-60, 61, 2.5)
+clatarr = np.arange(-90, 91, 2.5)
+clngarr = np.arange(-90, 91, 2.5)
 nlng = len(clngarr)
 nlat = len(clatarr)
 # clngarr = np.linspace(-90, +90, nlng)
@@ -460,6 +460,8 @@ for it,dstart_chunk in enumerate(xdays(dstart, dstop, dspan)):
 				logger.info('%s (interp done)', datetime.now()-T_bf_interp)
 				T_bf_ccf = datetime.now()
 				ccf, _, _ = get_lct_map(img1p, img_interp)
+				if abs(clat) < 0.1 and abs(clng) < 0.1 and np.isnan(ccf).any() and not os.path.exists('ccf_no_av.npy'):
+					np.save('ccf_no_av.npy', ccf)
 				logger.info('%s (ccf calculation done)', datetime.now()-T_bf_ccf)
 			else:
 				T_bf_ccf = datetime.now()
@@ -482,6 +484,8 @@ for it,dstart_chunk in enumerate(xdays(dstart, dstop, dspan)):
 	logger.info('(loop over dstep)')
 
 	for ixy, (ccf, (clng,clat), (i,j)) in enumerate(zip(ccfs, xylist, ijlist)):
+		if abs(clat) < 0.1 and abs(clng) < 0.1 and np.isnan(ccf).any() and not os.path.exists('ccf_av.npy'):
+			np.save('ccf_av.npy', ccf)
 		if np.isnan(ccf).any():
 			ux = uy = np.nan
 		else:
