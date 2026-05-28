@@ -225,7 +225,7 @@ def remap_patches(
         lngc_out=clng,
         latc_out=clat,
         pixscale_out=cfg.pixel_size,
-        interp_method='cubconv',
+        interp_method='bilinear',
         verbose=1,
         nthr=1,
         header=False,
