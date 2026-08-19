@@ -51,11 +51,45 @@ def resolve_chunk_bounds(
     chunk_index is 0-indexed.
     """
     dstart, dstop = _month_bounds(year, month, cfg)
-    nt = _count_chunks(dstart, dstop, cfg.dspan)
+    return _chunk_bounds_in_range(dstart, dstop, cfg.dspan, chunk_index)
+
+
+def resolve_range_chunk_bounds(
+    cfg: Config, chunk_index: int,
+) -> Optional[tuple[datetime, datetime]]:
+    """
+    Return (dstart_chunk, dstop_chunk) for the chunk_index-th dspan
+    window within cfg.range_start/cfg.range_end, or None if chunk_index
+    is out of range for that window.
+
+    chunk_index is 0-indexed.
+
+    Raises
+    ------
+    ValueError  if cfg.range_start/cfg.range_end are not both set
+                (load_config already rejects only one being set, and
+                a range spanning more than one year, so the only way
+                to hit this is calling run_chunk_range on a config that
+                never set a range at all).
+    """
+    if not cfg.has_range:
+        raise ValueError(
+            'range_start/range_end are not set in [job] — set both to '
+            'use the explicit-range chunk pipeline, or use run_chunk() '
+            'with a year/month instead')
+    return _chunk_bounds_in_range(cfg.range_start, cfg.range_end, cfg.dspan,
+                                   chunk_index)
+
+
+def _chunk_bounds_in_range(
+    dstart: datetime, dstop: datetime, dspan, chunk_index: int,
+) -> Optional[tuple[datetime, datetime]]:
+    """Shared bounds arithmetic for resolve_chunk_bounds/resolve_range_chunk_bounds."""
+    nt = _count_chunks(dstart, dstop, dspan)
     if not (0 <= chunk_index < nt):
         return None
-    dstart_chunk = dstart + chunk_index * cfg.dspan
-    dstop_chunk  = min(dstart_chunk + cfg.dspan, dstop)
+    dstart_chunk = dstart + chunk_index * dspan
+    dstop_chunk  = min(dstart_chunk + dspan, dstop)
     return dstart_chunk, dstop_chunk
 
 
@@ -70,12 +104,13 @@ def chunk_output_filename(cfg: Config, dstart_chunk: datetime) -> pathlib.Path:
     return cfg.rootdir_out / fname
 
 
-# ── Main run function ─────────────────────────────────────────────────────
+# ── Main run functions ────────────────────────────────────────────────────
 
 def run_chunk(cfg: Config, year: int, month: int, chunk_index: int,
               loglevel: int) -> None:
     """
-    Run the LCT pipeline for a single time chunk, no MPI.
+    Run the LCT pipeline for a single time chunk within a calendar
+    month, no MPI.
 
     Parameters
     ----------
@@ -100,6 +135,56 @@ def run_chunk(cfg: Config, year: int, month: int, chunk_index: int,
         return
     dstart_chunk, dstop_chunk = bounds
 
+    _run_chunk_body(cfg, year, dstart_chunk, dstop_chunk, log)
+
+
+def run_chunk_range(cfg: Config, chunk_index: int, loglevel: int) -> None:
+    """
+    Run the LCT pipeline for a single time chunk within cfg's explicit
+    range_start/range_end, no MPI. The year is inferred from
+    range_start (load_config already guarantees range_start and
+    range_end fall within the same year).
+
+    Parameters
+    ----------
+    cfg         : validated Config object with range_start/range_end set
+    chunk_index : 0-indexed chunk within [range_start, range_end)
+    loglevel    : logging level
+    """
+    log = setup_logging(rank=0, loglevel=loglevel)
+
+    if not cfg.has_range:
+        raise ValueError(
+            'range_start/range_end are not set in [job] — set both to '
+            'use run_chunk_range(), or call run_chunk() with a year/month')
+
+    year = cfg.range_start.year
+    if not cfg.validate_range(cfg.range_start):
+        log.warning('Exiting cleanly — no data for range starting %s',
+                    cfg.range_start)
+        return
+
+    bounds = resolve_range_chunk_bounds(cfg, chunk_index)
+    if bounds is None:
+        nt = _count_chunks(cfg.range_start, cfg.range_end, cfg.dspan)
+        log.warning('Chunk index %d out of range [0, %d) for %s - %s — '
+                    'nothing to do', chunk_index, nt,
+                    cfg.range_start, cfg.range_end)
+        return
+    dstart_chunk, dstop_chunk = bounds
+
+    _run_chunk_body(cfg, year, dstart_chunk, dstop_chunk, log)
+
+
+def _run_chunk_body(cfg: Config, year: int, dstart_chunk: datetime,
+                     dstop_chunk: datetime, log: logging.Logger) -> None:
+    """
+    Shared processing for one resolved (dstart_chunk, dstop_chunk)
+    window: FITS reading, the sequential (no-MPI) patch loop, CCF
+    averaging, velocity extraction, and HDF5 writing. Used by both
+    run_chunk() and run_chunk_range() once each has resolved its own
+    chunk bounds and the year to load keys for.
+    """
     # ── Startup: PSF and Tukey kernel ──────────────────────────────────
     _, _, psf_rel = build_psfs(cfg)
     kernel        = build_tukey_kernel(cfg.patch_size, cfg.alpha)
