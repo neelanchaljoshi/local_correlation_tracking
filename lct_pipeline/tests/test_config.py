@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
 
@@ -198,6 +199,102 @@ class TestValidateMonth(unittest.TestCase):
             warnings.simplefilter('always')
             result = self.cfg.validate_month(2010, 4)
         self.assertFalse(result)
+
+
+class TestValidateRange(unittest.TestCase):
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.ccf = self.tmp / 'ccfs'
+        self.cfg = load_config(
+            _write_ini(VALID_INI.format(rootdir=self.tmp, ccfdir=self.ccf)))
+
+    def test_valid_start_returns_true(self):
+        self.assertTrue(self.cfg.validate_range(datetime(2015, 6, 1)))
+
+    def test_before_may_2010_returns_false_with_warning(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter('always')
+            result = self.cfg.validate_range(datetime(2010, 3, 15))
+        self.assertFalse(result)
+        self.assertTrue(any(issubclass(x.category, UserWarning) for x in w))
+
+    def test_exactly_data_available_from_is_valid(self):
+        self.assertTrue(self.cfg.validate_range(DATA_AVAILABLE_FROM))
+
+    def test_validate_month_delegates_to_validate_range(self):
+        # datetime(year, month, 1) must match what validate_month checks
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            self.assertEqual(
+                self.cfg.validate_month(2010, 4),
+                self.cfg.validate_range(datetime(2010, 4, 1)))
+
+
+class TestRangeStartEnd(unittest.TestCase):
+    """[job] range_start/range_end: optional explicit chunk range."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.ccf = self.tmp / 'ccfs'
+
+    def _ini_with_range(self, range_start='', range_end=''):
+        base = VALID_INI.format(rootdir=self.tmp, ccfdir=self.ccf)
+        extra = ''
+        if range_start:
+            extra += f'range_start         = {range_start}\n'
+        if range_end:
+            extra += f'range_end           = {range_end}\n'
+        return base.replace('dstep_minutes       = 45\n',
+                             'dstep_minutes       = 45\n' + extra)
+
+    def test_absent_by_default(self):
+        cfg = load_config(_write_ini(self._ini_with_range()))
+        self.assertIsNone(cfg.range_start)
+        self.assertIsNone(cfg.range_end)
+        self.assertFalse(cfg.has_range)
+
+    def test_both_set_parses_as_datetime(self):
+        cfg = load_config(_write_ini(self._ini_with_range(
+            '2019-06-15T00:00:00', '2019-06-16T00:00:00')))
+        self.assertEqual(cfg.range_start, datetime(2019, 6, 15))
+        self.assertEqual(cfg.range_end, datetime(2019, 6, 16))
+        self.assertTrue(cfg.has_range)
+
+    def test_only_range_start_raises(self):
+        ini = _write_ini(self._ini_with_range(
+            range_start='2019-06-15T00:00:00'))
+        with self.assertRaises(ValueError):
+            load_config(ini)
+
+    def test_only_range_end_raises(self):
+        ini = _write_ini(self._ini_with_range(
+            range_end='2019-06-16T00:00:00'))
+        with self.assertRaises(ValueError):
+            load_config(ini)
+
+    def test_range_start_after_range_end_raises(self):
+        ini = _write_ini(self._ini_with_range(
+            '2019-06-16T00:00:00', '2019-06-15T00:00:00'))
+        with self.assertRaises(ValueError):
+            load_config(ini)
+
+    def test_range_start_equal_range_end_raises(self):
+        ini = _write_ini(self._ini_with_range(
+            '2019-06-15T00:00:00', '2019-06-15T00:00:00'))
+        with self.assertRaises(ValueError):
+            load_config(ini)
+
+    def test_range_spanning_two_years_raises(self):
+        ini = _write_ini(self._ini_with_range(
+            '2019-12-31T00:00:00', '2020-01-01T00:00:00'))
+        with self.assertRaises(ValueError):
+            load_config(ini)
+
+    def test_range_within_same_year_is_fine(self):
+        cfg = load_config(_write_ini(self._ini_with_range(
+            '2019-01-01T00:00:00', '2019-12-31T23:59:59')))
+        self.assertTrue(cfg.has_range)
 
 
 if __name__ == '__main__':
