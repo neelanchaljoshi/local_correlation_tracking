@@ -85,6 +85,14 @@ ccf_lat_threshold   = 0.1
 ccf_lng_threshold   = 0.1
 """
 
+# Same as INI_TEMPLATE but dspan_hours=1 and with range_start/range_end
+# set to a single day, for range-mode CLI tests.
+INI_TEMPLATE_RANGE = INI_TEMPLATE.replace(
+    'dspan_hours         = 24',
+    'dspan_hours         = 1\n'
+    'range_start         = 2019-06-15T00:00:00\n'
+    'range_end           = 2019-06-16T00:00:00')
+
 
 class TestMainChunkCLI(unittest.TestCase):
 
@@ -157,6 +165,84 @@ class TestMainChunkCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn('--chunk', result.stdout)
         self.assertIn('--print-nchunks', result.stdout)
+
+    def test_year_without_month_is_an_error(self):
+        # A lone positional after config_file always fills 'year' first
+        # (argparse), so this is the only reachable "only one given" case.
+        code, out, err = self._run('2019', '--chunk', '1')
+        self.assertNotEqual(code, 0)
+        self.assertIn('must both be given', err)
+
+    def test_no_year_month_and_no_config_range_is_an_error(self):
+        # Omitting both year and month is valid syntax (range mode) —
+        # but this config has no range_start/range_end set either.
+        code, out, err = self._run('--chunk', '1')
+        self.assertNotEqual(code, 0)
+        self.assertIn('range_start/range_end are not set', err)
+
+
+class TestMainChunkRangeModeCLI(unittest.TestCase):
+    """
+    CLI tests for range mode: year/month omitted entirely, chunks
+    computed from range_start/range_end in the config instead. This is
+    the mode that solves "one day of hourly files, --array=1-24, no
+    day-offset arithmetic" cleanly.
+    """
+
+    def setUp(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.ini = tmp / 'cfg_range.ini'
+        self.ini.write_text(
+            INI_TEMPLATE_RANGE.format(rootdir=tmp, ccfdir=tmp / 'ccfs'))
+
+    def _run(self, ini, *args):
+        result = subprocess.run(
+            [sys.executable, str(MAIN_CHUNK), str(ini), *args],
+            capture_output=True, text=True, cwd=str(REPO_ROOT))
+        return result.returncode, result.stdout, result.stderr
+
+    def test_print_nchunks_reports_24_hours_for_one_day(self):
+        code, out, err = self._run(self.ini, '--print-nchunks')
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), '24')
+
+    def test_out_of_range_chunk_exits_cleanly_not_a_crash(self):
+        code, out, err = self._run(self.ini, '--chunk', '1000')
+        self.assertEqual(code, 0)
+        self.assertNotIn('Traceback', err)
+        self.assertIn('out of range', out)
+
+    def test_valid_chunk_proceeds_to_real_data_loading(self):
+        """
+        Chunk 1 (hour 0 of June 15) should pass every validation step
+        and only fail once it tries to load the (here, nonexistent)
+        keys file — confirming range mode actually dispatches to
+        run_chunk_range rather than silently doing nothing.
+        """
+        code, out, err = self._run(self.ini, '--chunk', '1')
+        self.assertNotEqual(code, 0)
+        self.assertNotIn('out of range', out)
+        self.assertIn('Keys file not found', err)
+
+    def test_config_without_range_and_no_year_month_is_an_error(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        ini_no_range = tmp / 'cfg_no_range.ini'
+        ini_no_range.write_text(
+            INI_TEMPLATE.format(rootdir=tmp, ccfdir=tmp / 'ccfs'))
+        code, out, err = self._run(ini_no_range, '--print-nchunks')
+        self.assertNotEqual(code, 0)
+        self.assertIn('range_start/range_end are not set', err)
+
+    def test_month_mode_still_works_on_a_config_that_also_has_a_range(self):
+        """
+        Passing year/month explicitly must use month bounds, not the
+        config's range_start/range_end, even when both are present.
+        dspan_hours=1 in this config -> hours in June (720), not the
+        24 hours of the range_start/range_end window.
+        """
+        code, out, err = self._run(self.ini, '2019', '6', '--print-nchunks')
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), '720')
 
 
 if __name__ == '__main__':
