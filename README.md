@@ -22,6 +22,8 @@ MPI parallelisation for HPC cluster execution via SLURM, configurable for
 both granulation and magnetic feature tracking via `.ini` config files.
 Also includes an embarrassingly-parallel, non-MPI mode where each SLURM
 array task processes one independent time chunk (see Usage below).
+Full module-by-module and algorithm-level documentation:
+[**LCT_PIPELINE.md**](LCT_PIPELINE.md).
 
 ### `inertial_mode_pipeline/`
 Pipeline for extracting solar inertial mode eigenfunctions from LCT flow
@@ -68,6 +70,13 @@ exits that task cleanly instead of failing. Trades the MPI version's
 spatial parallelism (across patches) for temporal parallelism (across
 chunks) — worth timing on your grid size before relying on it, since a
 single task now walks the whole patch grid serially.
+
+There's also a **range mode** for targeting an arbitrary window (e.g.
+just one day at hourly granularity) without computing day-offset
+`--array` arithmetic by hand — set `range_start`/`range_end` in the
+config's `[job]` section and omit `year`/`month` on the command line.
+See [LCT_PIPELINE.md](LCT_PIPELINE.md#execution-modes) for the full
+walkthrough.
 
 **Inertial mode pipeline** (eigenfunction extraction for one mode):
 ```bash
