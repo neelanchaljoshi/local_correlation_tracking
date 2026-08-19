@@ -5,7 +5,7 @@ Fourier transforms, Carrington-frame conversion, and frequency filtering.
 Pure computation — no I/O, no disk geometry.
 """
 
-import numpy as np
+import numpy as np # type: ignore
 
 from .config import DT_SEC
 
@@ -85,7 +85,7 @@ def bandpass_filter(
     freq_nHz: np.ndarray,
     cent_freq: float,
     df: float = 20.0,
-    tukey_alpha: float = 0.1,
+    tukey_alpha: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Apply a Tukey bandpass filter around cent_freq ± df nHz.
