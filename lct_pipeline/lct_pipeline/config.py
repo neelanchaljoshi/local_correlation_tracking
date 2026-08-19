@@ -90,6 +90,10 @@ class Config:
     # ── Source ───────────────────────────────────────────────────────────
     config_path:            pathlib.Path = field(repr=False)
 
+    # ── Explicit chunk range (optional; non-MPI chunk pipeline only) ──────
+    range_start:            Optional[datetime] = None
+    range_end:              Optional[datetime] = None
+
     def __post_init__(self):
         self.rootdir_out.mkdir(parents=True, exist_ok=True)
         if self.ccf_dir is not None:
@@ -103,6 +107,11 @@ class Config:
     def resolution_label(self) -> str:
         return '2k' if self.downsample else '4k'
 
+    @property
+    def has_range(self) -> bool:
+        """True if range_start/range_end were set in [job] (chunk pipeline)."""
+        return self.range_start is not None and self.range_end is not None
+
     def output_filename(self, year: int, month: int) -> pathlib.Path:
         """Return the HDF5 output path for a given year/month."""
         seg = 'mag' if self.is_magnetic else 'gran'
@@ -112,19 +121,25 @@ class Config:
                  f'_{self.resolution_label}.hdf5')
         return self.rootdir_out / fname
 
+    def validate_range(self, dstart: datetime) -> bool:
+        """
+        Return True if data is available starting at dstart.
+        Warns and returns False if before May 2010.
+        """
+        if dstart < DATA_AVAILABLE_FROM:
+            warnings.warn(
+                f'Requested start {dstart} is before data availability '
+                f'({DATA_AVAILABLE_FROM.strftime("%Y-%m")}). Skipping.',
+                UserWarning, stacklevel=2)
+            return False
+        return True
+
     def validate_month(self, year: int, month: int) -> bool:
         """
         Return True if data is available for this year/month.
         Warns and returns False if before May 2010.
         """
-        requested = datetime(year, month, 1)
-        if requested < DATA_AVAILABLE_FROM:
-            warnings.warn(
-                f'Requested {year}-{month:02d} is before data availability '
-                f'({DATA_AVAILABLE_FROM.strftime("%Y-%m")}). Skipping.',
-                UserWarning, stacklevel=2)
-            return False
-        return True
+        return self.validate_range(datetime(year, month, 1))
 
 
 # ── Loader ────────────────────────────────────────────────────────────────
@@ -168,6 +183,25 @@ def load_config(path: str | pathlib.Path) -> Config:
     dstep    = timedelta(minutes=getint('job', 'dstep_minutes'))
     if yr_start > yr_stop:
         raise ValueError(f'yr_start ({yr_start}) > yr_stop ({yr_stop})')
+
+    range_start_raw = get('job', 'range_start', fallback='').strip()
+    range_end_raw   = get('job', 'range_end', fallback='').strip()
+    if bool(range_start_raw) != bool(range_end_raw):
+        raise ValueError(
+            'range_start and range_end must both be set, or both omitted '
+            '(got only one) in [job]')
+    range_start = datetime.fromisoformat(range_start_raw) if range_start_raw else None
+    range_end   = datetime.fromisoformat(range_end_raw) if range_end_raw else None
+    if range_start is not None and range_end is not None:
+        if range_start >= range_end:
+            raise ValueError(
+                f'range_start ({range_start}) must be before '
+                f'range_end ({range_end})')
+        if range_start.year != range_end.year:
+            raise ValueError(
+                f'range_start ({range_start}) and range_end ({range_end}) '
+                f'must fall within the same year — the chunk pipeline loads '
+                f'one year\'s keys table at a time')
 
     # ── Instrument ───────────────────────────────────────────────────────
     segname      = get('instrument', 'segname')
@@ -255,4 +289,6 @@ def load_config(path: str | pathlib.Path) -> Config:
         ccf_lat_threshold=ccf_lat_threshold,
         ccf_lng_threshold=ccf_lng_threshold,
         config_path=path,
+        range_start=range_start,
+        range_end=range_end,
     )
