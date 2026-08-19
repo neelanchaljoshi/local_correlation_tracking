@@ -22,13 +22,19 @@ import pathlib
 import sys
 import tempfile
 import unittest
+import warnings
 from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1]))
 
 from lct_pipeline.config import load_config
 from lct_pipeline.pipeline import _month_bounds, _count_chunks
-from lct_pipeline.pipeline_chunk import resolve_chunk_bounds, chunk_output_filename
+from lct_pipeline.pipeline_chunk import (
+    resolve_chunk_bounds,
+    resolve_range_chunk_bounds,
+    chunk_output_filename,
+    run_chunk_range,
+)
 
 
 INI_TEMPLATE = """
@@ -37,6 +43,7 @@ yr_start            = 2015
 yr_stop             = 2020
 dspan_hours         = {dspan}
 dstep_minutes       = 45
+{range_lines}
 
 [instrument]
 segname             = {segname}
@@ -97,12 +104,18 @@ ccf_lng_threshold   = 0.1
 """
 
 
-def make_cfg(dspan=24, segname='continuum.fits', downsample=0):
+def make_cfg(dspan=24, segname='continuum.fits', downsample=0,
+             range_start=None, range_end=None):
     """Write a temp .ini with the given knobs and return the loaded Config."""
     tmp = pathlib.Path(tempfile.mkdtemp())
     ccf = tmp / 'ccfs'
+    range_lines = ''
+    if range_start and range_end:
+        range_lines = (f'range_start         = {range_start}\n'
+                       f'range_end           = {range_end}\n')
     ini_text = INI_TEMPLATE.format(
         dspan=dspan, segname=segname, downsample=downsample,
+        range_lines=range_lines,
     ).format(rootdir=tmp, ccfdir=ccf)
     f = tempfile.NamedTemporaryFile(mode='w', suffix='.ini', delete=False)
     f.write(ini_text)
@@ -244,6 +257,87 @@ class TestChunkOutputFilename(unittest.TestCase):
         monthly = self.cfg.output_filename(2019, 6)
         chunk = chunk_output_filename(self.cfg, datetime(2019, 6, 15))
         self.assertNotEqual(monthly.name, chunk.name)
+
+
+class TestResolveRangeChunkBounds(unittest.TestCase):
+    """
+    The motivating use case: an explicit range_start/range_end in the
+    config lets --array=1-N map directly onto that range with no
+    day-offset arithmetic — unlike month mode, where hour-of-day N of a
+    month requires computing (day-1)*24 + N by hand.
+    """
+
+    def test_one_day_hourly_range_has_24_chunks(self):
+        cfg = make_cfg(dspan=1, range_start='2019-06-15T00:00:00',
+                        range_end='2019-06-16T00:00:00')
+        nt = _count_chunks(cfg.range_start, cfg.range_end, cfg.dspan)
+        self.assertEqual(nt, 24)
+
+    def test_chunk_index_maps_directly_to_hour_of_day_no_offset_needed(self):
+        cfg = make_cfg(dspan=1, range_start='2019-06-15T00:00:00',
+                        range_end='2019-06-16T00:00:00')
+        for hour in range(24):
+            dstart, dstop = resolve_range_chunk_bounds(cfg, hour)
+            self.assertEqual(dstart, datetime(2019, 6, 15, hour))
+            self.assertEqual(dstop, dstart + cfg.dspan)
+
+    def test_negative_index_is_out_of_range(self):
+        cfg = make_cfg(dspan=1, range_start='2019-06-15T00:00:00',
+                        range_end='2019-06-16T00:00:00')
+        self.assertIsNone(resolve_range_chunk_bounds(cfg, -1))
+
+    def test_index_equal_to_count_is_out_of_range(self):
+        cfg = make_cfg(dspan=1, range_start='2019-06-15T00:00:00',
+                        range_end='2019-06-16T00:00:00')
+        self.assertIsNone(resolve_range_chunk_bounds(cfg, 24))
+
+    def test_index_far_out_of_range_does_not_raise(self):
+        cfg = make_cfg(dspan=1, range_start='2019-06-15T00:00:00',
+                        range_end='2019-06-16T00:00:00')
+        self.assertIsNone(resolve_range_chunk_bounds(cfg, 1000))
+
+    def test_last_chunk_clipped_when_dspan_does_not_evenly_divide_range(self):
+        # 5h range, 2h dspan -> ceil(5/2) = 3 chunks; the last is clipped
+        cfg = make_cfg(dspan=2, range_start='2019-06-15T00:00:00',
+                        range_end='2019-06-15T05:00:00')
+        nt = _count_chunks(cfg.range_start, cfg.range_end, cfg.dspan)
+        self.assertEqual(nt, 3)
+        dstart, dstop = resolve_range_chunk_bounds(cfg, 2)
+        self.assertEqual(dstart, datetime(2019, 6, 15, 4))
+        self.assertEqual(dstop, datetime(2019, 6, 15, 5))  # clipped, not 06:00
+
+    def test_raises_when_config_has_no_range(self):
+        cfg = make_cfg(dspan=1)
+        with self.assertRaises(ValueError):
+            resolve_range_chunk_bounds(cfg, 0)
+
+
+class TestRunChunkRangeValidation(unittest.TestCase):
+    """
+    Error/warning paths of run_chunk_range() that resolve before any
+    FITS/keys I/O happens, so they're testable without real data.
+    """
+
+    def test_raises_when_config_has_no_range(self):
+        cfg = make_cfg(dspan=1)
+        with self.assertRaises(ValueError):
+            run_chunk_range(cfg, 0, loglevel=30)
+
+    def test_out_of_range_chunk_exits_cleanly_with_warning_not_a_crash(self):
+        cfg = make_cfg(dspan=1, range_start='2019-06-15T00:00:00',
+                        range_end='2019-06-16T00:00:00')
+        with self.assertLogs(level='WARNING') as cm:
+            run_chunk_range(cfg, 1000, loglevel=30)
+        self.assertTrue(any('out of range' in msg for msg in cm.output))
+
+    def test_range_before_data_available_exits_cleanly_with_warning(self):
+        cfg = make_cfg(dspan=1, range_start='2010-01-01T00:00:00',
+                        range_end='2010-01-02T00:00:00')
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            with self.assertLogs(level='WARNING') as cm:
+                run_chunk_range(cfg, 0, loglevel=30)
+        self.assertTrue(any('no data' in msg.lower() for msg in cm.output))
 
 
 if __name__ == '__main__':
