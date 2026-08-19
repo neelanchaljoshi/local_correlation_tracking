@@ -113,7 +113,7 @@ for i in range(4):
             cbar.ax.yaxis.get_offset_text().set_fontsize(18)
             # cbar.ax.yaxis.offsetText.set_text(cbar.ax.yaxis.offsetText.get_text().replace('e', '×10^'))
         cbar.ax.tick_params(labelsize=18)
-        cbar.set_label(label=r'$10^{-8} s^{-1}$' if j > 1 else r'$ms^{-1}$', fontsize=16)
+        cbar.set_label(label=r'$10^{-8}$ s$^{-1}$' if j > 1 else r'ms$^{-1}$', fontsize=16)
         row_axes.append(ax)
     axs.append(row_axes)
 
@@ -161,4 +161,54 @@ for j in range(4):
 
 # plt.savefig('2d_eigenfunction_m2_HL_thesis.pdf', bbox_inches='tight')
 plt.show()
+# %%
+# %% Plot m=8 r_vort eigenfunction with streamlines (restricted to |lat| <= 35 deg)
+
+fig3 = plt.figure(figsize=(10, 9))
+proj_ortho = ccrs.Orthographic(central_longitude=90, central_latitude=0)
+ax = fig3.add_subplot(1, 1, 1, projection=proj_ortho)
+
+# --- Background: r_vort(m=8) ---
+limit_rvort_plot = 3e-8
+im = ax.pcolormesh(
+    lons, lats, rvort_m8,
+    transform=ccrs.PlateCarree(),
+    cmap='bwr',
+    vmax=limit_rvort_plot, vmin=-limit_rvort_plot,
+    rasterized=True,
+    zorder=1
+)
+
+# --- Streamlines: mask outside +-35 deg latitude ---
+lat_mask = np.abs(lats) <= 30
+
+vphi_stream = vphi_m8.copy()
+vtheta_stream = vtheta_m8.copy()
+vphi_stream[~lat_mask, :] = np.nan
+vtheta_stream[~lat_mask, :] = np.nan
+
+ax.streamplot(
+    lons, lats, vphi_stream, -vtheta_stream,
+    transform=ccrs.PlateCarree(),
+    color='k',
+    linewidth=1.0,
+    density=1.4,
+    arrowsize=1.0,
+    zorder=2
+)
+
+gl = ax.gridlines(crs=ccrs.PlateCarree(), draw_labels=False, linewidth=0.8, alpha=0.8, color='k', linestyle='--')
+gl.ylocator = mticker.FixedLocator([-90, -60, -30, 0, 30, 60, 90])
+
+# cbar = fig3.colorbar(im, ax=ax, shrink=0.6, aspect=15, pad=0.05, location='bottom',
+#                       ticks=[-limit_rvort_plot, 0, limit_rvort_plot])
+# cbar.ax.tick_params(labelsize=18)
+# cbar.ax.yaxis.get_offset_text().set_fontsize(18)
+# cbar.set_label(label=r'$\zeta_\mathrm{r}\ (s^{-1})$', fontsize=16)
+
+# ax.set_title(r'$m=8$ Eq.R $\zeta_\mathrm{r}$ with streamlines ($|{\rm lat}| \leq 35^\circ$)', fontsize=22, pad=20)
+
+plt.savefig('m8_rvort_streamlines_35deg.pdf', bbox_inches='tight')
+plt.show()
+
 # %%
