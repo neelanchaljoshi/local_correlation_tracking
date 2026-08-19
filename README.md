@@ -114,8 +114,12 @@ python inertial_mode_pipeline/run_pipeline.py 2 -171.0 highlat hmi.ic_45s_granul
 Fourier-transforms, bandpass-filters, extracts the mode via SVD,
 projects onto Legendre polynomials with chi-squared noise filtering,
 and estimates errors — one `.npz` per `(m, frequency, mode label,
-symmetry, dataset)` combination. Full reference:
-**[INERTIAL_MODE_PIPELINE.md](INERTIAL_MODE_PIPELINE.md)**.
+symmetry, dataset)` combination. `data` picks which upstream LCT
+run/cadence to use (e.g. `hmi.ic_45s_granule`, `hmi.m_45s`,
+`hmi.m_720s_dt_1h`) and `mode` is a free-text label such as `rossby`,
+`highlat`, `critlat`, `hfr` — see
+**[INERTIAL_MODE_PIPELINE.md](INERTIAL_MODE_PIPELINE.md)** for the full
+parameter reference.
 
 ## Repository layout
 

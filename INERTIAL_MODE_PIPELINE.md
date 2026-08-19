@@ -252,8 +252,8 @@ python run_pipeline.py <m> <cent_freq> <mode> <data> <symmetry> [options]
 |---|---|
 | `m` | Azimuthal order |
 | `cent_freq` | Central frequency [nHz] |
-| `mode` | Free-text mode label (e.g. `highlat`, `rossby`) — filename metadata only |
-| `data` | Data product name, `.` gets replaced with `_` to match `flow_processing/`'s output naming |
+| `mode` | Free-text mode label — filename metadata only, not otherwise interpreted by the pipeline. In practice one of: `rossby` (equatorial Rossby mode), `highlat` (high-latitude mode), `critlat` (critical-latitude mode), `hfr` (high-frequency retrograde mode). |
+| `data` | Data product name, `.` gets replaced with `_` to match `flow_processing/`'s output naming. Selects which upstream LCT run's flow maps to use — depends on what `lct_pipeline/` tracked and at what cadence: `hmi.ic_45s` (continuum intensity, 45s cadence, granulation tracking — needs the `_granule` suffix, e.g. `hmi.ic_45s_granule`), `hmi.m_45s` (magnetograms, 45s cadence, magnetic-feature tracking), `hmi.m_720s_dt_1h` (magnetograms, 720s/12min cadence, magnetic-feature tracking, flow maps binned to 1h cadence in `flow_processing/`). Whatever value is passed must exactly match the `data_name` that `flow_processing/` wrote its `.npy` output under (see [Input data](#input-data) and [FLOW_PROCESSING.md](FLOW_PROCESSING.md)). |
 | `symmetry` | `sym` \| `anti` \| `all` — equatorial symmetry of `u_phi` |
 | `--l_max` | Max ℓ in reconstruction (default `L_MAX_RECON`=22) |
 | `--l_cutoff` | Always-keep ℓ boundary (default `L_THEORY_CUTOFF`=15) |
