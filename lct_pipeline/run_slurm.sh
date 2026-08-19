@@ -22,7 +22,7 @@
 #SBATCH --mail-user=joshin@mps.mpg.de
 #SBATCH --output=logs/%x_slurm_%A_%a.log
 #SBATCH --job-name=lct_pipeline
-#SBATCH --ntasks=500
+#SBATCH --ntasks=1
 ##SBATCH --nodelist=helio[43-51]
 ##SBATCH --nodes=1
 ##SBATCH --ntasks-per-node=128
