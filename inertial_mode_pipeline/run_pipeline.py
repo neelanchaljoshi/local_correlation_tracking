@@ -41,6 +41,46 @@ from inertial_mode_pipeline.eigenfunction import extract_eigenfunction
 from inertial_mode_pipeline.legendre import project_and_clean
 
 
+def resolve_df(n_span: int, dt_seconds: float, cent_freq: float,
+                df_arg, min_bins: int = 2,
+                margin: float = 1.2) -> float:
+    """
+    Pick a safe --df for the given span, or validate a user-supplied one.
+
+    The frequency grid bandpass_filter builds has bins spaced
+    Δf = 1e9 / (n_span * dt_seconds) apart. bandpass_filter's Tukey
+    window defaults to tukey_alpha=0.0 (rectangular, no edge zeroing) on
+    this code path, so a single surviving passband bin is technically
+    enough for a non-zero result — min_bins (default 2) is a small
+    statistical margin against a lone, fragile surviving bin, not a
+    taper requirement. See tests/test_span_resolution.py and
+    tests/min_df_reference.md for the full derivation.
+
+    If df_arg is None, auto-selects df = min_bins * Δf / 2 * margin and
+    prints what it chose. If df_arg is given but doesn't clear the
+    min_bins threshold, prints a warning with a suggested value and
+    returns df_arg unchanged (the user's explicit choice is respected).
+    """
+    freq_res = 1e9 / (n_span * dt_seconds)
+    df_needed = min_bins * freq_res / 2 * margin
+
+    if df_arg is None:
+        print(f'  --df not given: auto-selected df={df_needed:.2f} nHz for '
+              f'this span (resolution {freq_res:.2f} nHz/bin, targeting '
+              f'>= {min_bins} passband bins).')
+        return df_needed
+
+    freq_nHz = np.fft.fftshift(-np.fft.fftfreq(n_span, dt_seconds) * 1e9)
+    band = (freq_nHz > cent_freq - df_arg) & (freq_nHz < cent_freq + df_arg)
+    n_bins = int(band.sum())
+    if n_bins < min_bins:
+        print(f'  WARNING: --df={df_arg} gives only {n_bins} passband bin(s) '
+              f'for this span (resolution {freq_res:.2f} nHz/bin) — fewer '
+              f'than {min_bins} risks a zero or unstable eigenfunction. '
+              f'Consider --df {df_needed:.1f} or higher.')
+    return df_arg
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -60,12 +100,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--mc_samples',   type=int,   default=500)
     p.add_argument('--error_method', type=str,   default='monte_carlo',
                    choices=['monte_carlo', 'monte_carlo_amp', 'fl_sum'])
-    p.add_argument('--span_lower',   type=int,   default=SPAN_LOWER)
-    p.add_argument('--span_upper',   type=int,   default=SPAN_UPPER)
+    p.add_argument('--span_lower',   type=float, default=SPAN_LOWER)
+    p.add_argument('--span_upper',   type=float, default=SPAN_UPPER)
     p.add_argument('--reject_type',  type=str,   default='clip',
                    choices=['clip', 'noclip'])
-    p.add_argument('--df',           type=float, default=10.0,
-                   help='Bandpass half-width [nHz]')
+    p.add_argument('--df',           type=float, default=None,
+                   help='Bandpass half-width [nHz]. If omitted, a safe '
+                        'value is auto-selected from --span_lower/--span_upper '
+                        '(see resolve_df()).')
+    p.add_argument('--min_bins',     type=int,   default=2,
+                   help='Minimum passband bins required for a non-zero '
+                        'result (default 2; bare mathematical minimum is 1 '
+                        'under the pipeline\'s default rectangular window).')
 
     return p.parse_args()
 
@@ -113,6 +159,14 @@ def main() -> None:
 
     # ── Time span ────────────────────────────────────────────────────────
     span = (t_array >= args.span_lower) & (t_array < args.span_upper)
+    n_span = int(span.sum())
+    if n_span == 0:
+        raise ValueError(
+            f'No timesteps fall inside [--span_lower={args.span_lower}, '
+            f'--span_upper={args.span_upper}) — widen the span.')
+
+    df = resolve_df(n_span, DT_SEC, args.cent_freq, args.df,
+                     min_bins=args.min_bins)
 
     # ── Fourier transform ────────────────────────────────────────────────
     print('Transforming to Fourier space...')
@@ -124,7 +178,7 @@ def main() -> None:
     ef_result = extract_eigenfunction(
         uphi_ft, uthe_ft, freq_nHz,
         m=args.m, cent_freq=args.cent_freq,
-        lats=lats, df=args.df)
+        lats=lats, df=df)
 
     # ── Legendre projection and cleaning ─────────────────────────────────
     print('Projecting onto Legendre polynomials...')
