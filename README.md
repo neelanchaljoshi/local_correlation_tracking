@@ -20,6 +20,8 @@ End-to-end LCT pipeline for tracking granulation and magnetic features on
 the solar surface using SDO/HMI continuum and magnetogram images. Supports
 MPI parallelisation for HPC cluster execution via SLURM, configurable for
 both granulation and magnetic feature tracking via `.ini` config files.
+Also includes an embarrassingly-parallel, non-MPI mode where each SLURM
+array task processes one independent time chunk (see Usage below).
 
 ### `inertial_mode_pipeline/`
 Pipeline for extracting solar inertial mode eigenfunctions from LCT flow
@@ -42,10 +44,30 @@ filters noise modes, and estimates errors via Monte Carlo methods.
 
 ## Usage
 
-**LCT pipeline** (granulation tracking, one month per SLURM array job):
+**LCT pipeline** (granulation tracking, one month per SLURM array job,
+MPI-parallelised across the spatial patch grid within each job):
 ```bash
 sbatch --array=1-12 lct_pipeline/run_slurm.sh lct_pipeline/config/granulation.ini 2019
 ```
+
+**LCT pipeline — embarrassingly parallel, no MPI** (one SLURM array task
+per time chunk — a day at `dspan_hours=24`, an hour at `dspan_hours=1`,
+etc., set in the `.ini` config — each task independent, no inter-task
+communication):
+```bash
+# 1. Find out how many chunks the target month has (sizes --array=1-N):
+python lct_pipeline/main_chunk.py lct_pipeline/config/granulation.ini 2019 6 --print-nchunks
+
+# 2. Submit exactly that many array tasks:
+sbatch --array=1-30 lct_pipeline/run_slurm_chunk.sh lct_pipeline/config/granulation.ini 2019 6
+```
+Each task writes its own small output file for just that chunk (rather
+than the MPI pipeline's one file per month). An `--array` range larger
+than the month's chunk count (e.g. requesting day 31 of a 30-day month)
+exits that task cleanly instead of failing. Trades the MPI version's
+spatial parallelism (across patches) for temporal parallelism (across
+chunks) — worth timing on your grid size before relying on it, since a
+single task now walks the whole patch grid serially.
 
 **Inertial mode pipeline** (eigenfunction extraction for one mode):
 ```bash
