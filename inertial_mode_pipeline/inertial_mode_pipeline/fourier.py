@@ -5,7 +5,7 @@ Fourier transforms, Carrington-frame conversion, and frequency filtering.
 Pure computation — no I/O, no disk geometry.
 """
 
-import numpy as np # type: ignore
+import numpy as np
 
 from .config import DT_SEC
 
