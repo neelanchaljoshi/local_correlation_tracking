@@ -609,13 +609,13 @@ for j, title in enumerate(col_titles):
     ax.axis('off')
 
 # ---- Rows 1 & 2: globe maps ----
-cmap_label = [r'$ms^{-1*}$', r'$ms^{-1*}$', r'$10^{-8}\,s^{-1*}$', r'$10^{-8}\,s^{-1*}$']
+cmap_label = [r'ms$^{-1*}$', r'ms$^{-1*}$', r'10$^{-8}$s$^{-1*}$', r'10$^{-8}$s$^{-1*}$']
 for i, (row_data, vmaxs, cbar_units) in enumerate(zip(
     [obs_data, model_surf_resampled],
     [vmax_obs, vmax_model],
     [
-        [r'$ms^{-1}$', r'$ms^{-1}$', r'$10^{-8}\,s^{-1}$', r'$10^{-8}\,s^{-1}$'],
-        [r'$ms^{-1*}$', r'$ms^{-1*}$', r'$10^{-8}\,s^{-1*}$', r'$10^{-8}\,s^{-1*}$'],
+        [r'ms$^{-1}$', r'ms$^{-1}$', r'10$^{-8}$s$^{-1}$', r'10$^{-8}$s$^{-1}$'],
+        [r'ms$^{-1*}$', r'ms$^{-1*}$', r'10$^{-8}$s$^{-1*}$', r'10$^{-8}$s$^{-1*}$'],
     ]
 )):
     # Row label
@@ -669,10 +669,10 @@ for j in range(4):
 # =============================================================================
 # Save / show
 # =============================================================================
-# fig.savefig(
-#     '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/m3_eigenfunctions_obs_vs_model.pdf',
-#     bbox_inches='tight'
-# )
+fig.savefig(
+    '/data/seismo/joshin/pipeline-test/local_correlation_tracking/pdfs/m3_eigenfunctions_obs_vs_model.pdf',
+    bbox_inches='tight'
+)
 plt.show()
 
 # %%
