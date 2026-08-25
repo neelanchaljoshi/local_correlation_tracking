@@ -11,5 +11,5 @@ def get_info(ds, keylist):
     for i, (nam, typ) in enumerate(keylist):
         keys[nam] = keys_str[:, i].astype(typ)
 
-    path = subp.Popen(f'show_info ds={ds} -Pq', shell=True, stdout=subp.PIPE, encoding='utf-8').stdout.readlines()
+    path = [line.strip() for line in subp.Popen(f'show_info ds={ds} -Pq', shell=True, stdout=subp.PIPE, encoding='utf-8').stdout.readlines()]
     return keys, path

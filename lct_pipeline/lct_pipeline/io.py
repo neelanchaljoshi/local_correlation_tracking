@@ -57,7 +57,7 @@ def load_keys_table(year: int, cfg: Config) -> Table:
 
 def read_fits_image(path: str, segname: str) -> np.ndarray:
     """Read a single FITS image from a directory path."""
-    full_path = os.path.join(path.rstrip('/'), segname)
+    full_path = os.path.join(path.strip().rstrip('/'), segname)
     return fits.getdata(full_path)
 
 
