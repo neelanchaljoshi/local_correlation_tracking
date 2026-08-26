@@ -11,6 +11,7 @@ import pathlib
 DATA_ROOT = pathlib.Path('/data/seismo/joshin/pipeline-test/local_correlation_tracking/data')
 EF_OUT    = DATA_ROOT / 'eigenfunctions'
 PROC_DATA = DATA_ROOT / 'processed_data'
+PS_OUT    = DATA_ROOT / 'power_spectra'
 
 # ── Grid constants ────────────────────────────────────────────────────────
 LON_OG     = (-90.0, 90.0, 73)   # (start, stop, n_points)
@@ -35,3 +36,17 @@ SPAN_UPPER = 2025
 
 # ── Output filename template ──────────────────────────────────────────────
 EF_FILENAME = 'eigenfunction_clean_m{m}_{freq}_{mode}_{symmetry}_{data}.npz'
+
+# ── Power spectrum / Lorentzian-fit defaults (plot_power_spectrum.py) ─────
+TILE_SIZE_DEG = 5.0   # LCT patch size in degrees, used for the effective
+                       # number of independent latitude samples (n_avg) in
+                       # the Monte Carlo error estimate
+PS_MODE_LAT_BANDS = {
+    # mode label -> default (lat_min, lat_max) [degrees], matching the
+    # published highlat/critlat/rossby/hfr mode conventions
+    'highlat': (45.0, 75.0),
+    'critlat': (15.0, 45.0),
+    'rossby':  (0.0, 30.0),
+    'hfr':     (0.0, 30.0),
+}
+PS_FILENAME = 'power_spectrum_m{m}_{component}_{mode}_{symmetry}_{data}.pdf'

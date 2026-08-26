@@ -58,8 +58,10 @@ symmetry, data)` combination.
 | `inertial_mode_pipeline/eigenfunction.py` | The core SVD step: extracts the dominant spatial eigenfunction + time dependence at a given `(m, cent_freq)`. |
 | `inertial_mode_pipeline/legendre.py` | Legendre-polynomial projection, symmetry enforcement, chi-squared noise-mode filtering, reconstruction, phase alignment, and the top-level `project_and_clean()` orchestrator. |
 | `inertial_mode_pipeline/errors.py` | Three interchangeable error-estimation methods over the *discarded* (noise-classified) Legendre coefficients. |
+| `inertial_mode_pipeline/lorentzian_fit.py` | Maximum-likelihood Lorentzian fit of a power spectrum (`LorentzianMLE`) with parametric Monte Carlo error estimates. Ported from Zhi-Chao's rewrite of `plotting_scripts/table_lor_fit.py` (`/data/seismo/zhichao/codes/Joshi/git_lorentzian_fit_joshi1`). |
 | `run_pipeline.py` | CLI entrypoint tying all of the above together for one mode. |
 | `check_span.py` | Standalone diagnostic: checks whether a proposed `--span_lower`/`--span_upper`/`--df` combination will actually produce a non-zero eigenfunction, before spending time on a full run. |
+| `plot_power_spectrum.py` | Standalone diagnostic/visualization tool: plots the latitude-averaged power spectrum for one `(m, component)` and fits it with a Lorentzian. See [CLI reference](#plot_power_spectrumpy). |
 
 `geometry.py` imports `zclpy3.remap.get_tan_from_lnglat` from the same
 hardcoded MPS-internal path used by `lct_pipeline/geometry.py`
@@ -237,6 +239,10 @@ via CLI flags where exposed:
 | `NOISE_CONFIDENCE` | `0.90` | Chi-squared confidence level for the noise threshold |
 | `SPAN_LOWER`, `SPAN_UPPER` | `2010`, `2025` | Default `--span_lower`/`--span_upper` |
 | `EF_FILENAME` | `eigenfunction_clean_m{m}_{freq}_{mode}_{symmetry}_{data}.npz` | Output filename template |
+| `PS_OUT` | `DATA_ROOT/power_spectra` | `plot_power_spectrum.py`'s default output directory |
+| `TILE_SIZE_DEG` | `5.0` | LCT patch size in degrees, used by `plot_power_spectrum.py` to compute the effective number of independent latitude samples (`n_avg`) for the Lorentzian fit's Monte Carlo error estimate |
+| `PS_MODE_LAT_BANDS` | `{highlat: (45,75), critlat: (15,45), rossby: (0,30), hfr: (0,30)}` | Default latitude band per mode label, used by `plot_power_spectrum.py` when `--lat_min`/`--lat_max` are omitted |
+| `PS_FILENAME` | `power_spectrum_m{m}_{component}_{mode}_{symmetry}_{data}.pdf` | `plot_power_spectrum.py`'s default output filename template |
 
 ---
 
@@ -284,6 +290,63 @@ plus a concrete suggested `--df` or span widening — a fast way to
 check a proposed run *won't* come back with a silently all-zero
 eigenfunction, without actually running the full SVD/Legendre chain.
 
+### `plot_power_spectrum.py`
+
+```
+python plot_power_spectrum.py <m> <component> <mode> <data> <symmetry> \
+    --fit_range LOW HIGH [options]
+```
+
+| Arg | Meaning |
+|---|---|
+| `m` | Azimuthal order |
+| `component` | `uphi` \| `uthe` — flow component to plot/fit |
+| `mode` | Mode label — also used to look up the default latitude band (`highlat`/`critlat`/`rossby`/`hfr`, see `config.PS_MODE_LAT_BANDS`) |
+| `data` | Data product name (same convention as `run_pipeline.py`) |
+| `symmetry` | `sym` \| `anti` \| `all` — equatorial symmetry of `u_phi`, same convention as `run_pipeline.py`'s `symmetry` argument (`u_theta` gets the opposite parity via `geometry.apply_symmetry`) |
+| `--fit_range LOW HIGH` | **Required.** Frequency window [nHz] to fit the Lorentzian over; also the default plot x-limits |
+| `--lat_min`, `--lat_max` | Latitude band [deg]. Either or both may be omitted to fall back to `mode`'s default band (`resolve_lat_band()`) — an unrecognized `mode` requires both explicitly |
+| `--span_lower`, `--span_upper` | Decimal-year time window (default `SPAN_LOWER`/`SPAN_UPPER`, same as `run_pipeline.py`) |
+| `--reject_type` | `clip` \| `noclip` (same as `run_pipeline.py`) |
+| `--n_mc` | Monte Carlo realisations for the fit's error bars (default 2000 — table_lor_fit.py-scale runs use 10000, but that's slow for an interactive tool) |
+| `--use_differential_evolution` | Run a global optimizer for the initial guess instead of the automatic heuristic |
+| `--seed` | Random seed for the Monte Carlo error estimate (default 42) |
+| `--xlim LOW HIGH` | Plot x-limits [nHz] (default: `--fit_range`) |
+| `--outfile` | Output figure path (default: `PS_OUT / PS_FILENAME`, see `config.py`) |
+| `--no-show` | Skip `plt.show()` even on an interactive backend |
+
+Runs the same geometry + Fourier-transform steps as `run_pipeline.py`
+(`make_lon_lat_grids` → `apply_symmetry` → `build_radius_array` →
+`clip_flow_data`/`apodize_flow_data` → `get_correction_factor` →
+`transform_to_fourier`) but **without** the bandpass filter, SVD, or
+Legendre steps, since fitting a Lorentzian linewidth needs the full
+spectrum around the peak, not just the passband `run_pipeline.py`
+would extract the mode from. Averages power over the resolved
+latitude band at the given `m`, fits it with
+`lorentzian_fit.LorentzianMLE`, and saves a figure plus a `.json` fit
+summary (amplitude, frequency, FWHM, background, SNR, all with Monte
+Carlo 1-σ errors) next to it.
+
+Validated against Zhi-Chao's reference implementation
+(`git_lorentzian_fit_joshi1/table_lor_fit.py` +
+`utils.py`): recomputing the `m=1 uphi highlat anti` and `m=8 uthe
+rossby anti` power spectra from the raw processed flow data via this
+tool's `compute_power_spectrum()` reproduces the reference's
+precomputed `uphi_ft_2010_2024_*.npy`/`uthe_ft_2010_2024_*.npy` arrays
+and fit parameters (amplitude, frequency, FWHM) to full float
+precision.
+
+**Gotcha inherited from the legacy `uthe_ft_2010_2024_*.npy` cache
+filenames:** those cached arrays' `_sym_`/`_anti_` filename suffixes
+describe `u_theta`'s *own* parity, not the `symmetry` CLI argument
+that produced them — and for `u_theta` those two are swapped (`sym`
+u_theta was generated by running with `symmetry='anti'`, and vice
+versa), because `apply_symmetry` gives `u_theta` the *opposite* parity
+from `u_phi`. This tool takes `symmetry` directly (same meaning as
+`run_pipeline.py`) and needs no such translation — the caveat only
+matters if you're comparing against those specific legacy cache files
+by filename.
+
 ---
 
 ## Output file format
@@ -321,11 +384,17 @@ cd inertial_mode_pipeline && python -m pytest tests/ -v
 | `test_legendre.py` | Projection, symmetry enforcement, noise-mode keep/discard logic, reconstruction, phase alignment |
 | `test_errors.py` | All three error-estimation methods |
 | `test_span_resolution.py` | The narrow-span zero-eigenfunction regression suite — see [min_df_reference.md](inertial_mode_pipeline/tests/min_df_reference.md) for the generated span→minimum-`--df` lookup table |
+| `test_lorentzian_fit.py` | The Lorentzian profile, negative log-likelihood, and `LorentzianMLE` (parameter recovery on synthetic chi-squared-noise data, error estimation, `resolved` flag) |
+| `test_plot_power_spectrum.py` | `resolve_lat_band()`'s mode-default/explicit-override logic |
 
 `io.py` has **no dedicated tests** (0% coverage) — it's pure file
-loading, same category of gap as `lct_pipeline/io.py`. `run_pipeline.py`
-and `check_span.py` are CLI scripts, exercised manually rather than
-via pytest.
+loading, same category of gap as `lct_pipeline/io.py`. `run_pipeline.py`,
+`check_span.py`, and `plot_power_spectrum.py`'s data-loading/plotting
+functions (`compute_power_spectrum`, `fit_and_plot`) are CLI/plotting
+code that needs real flow data, so they're exercised manually rather
+than via pytest — see the manual validation against Zhi-Chao's
+reference implementation noted under
+[`plot_power_spectrum.py`](#plot_power_spectrumpy) above.
 
 ---
 
@@ -354,3 +423,11 @@ via pytest.
   either CLI flags or require editing `config.py` directly (e.g.
   `L_ARRAY_MAX`, `LAT_SVD_MAX`, disk-masking radii have no CLI
   override).
+- **The legacy `uthe_ft_2010_2024_*.npy` cache filenames' `_sym_`/`_anti_`
+  suffix is inverted relative to the `symmetry` CLI argument that
+  generated them**, because that suffix names `u_theta`'s own parity
+  while `apply_symmetry` gives `u_theta` the *opposite* parity from
+  `u_phi`. Doesn't affect `plot_power_spectrum.py` (which takes
+  `symmetry` directly, same convention as `run_pipeline.py`) — only
+  matters when matching those specific cached files by filename. See
+  [`plot_power_spectrum.py`](#plot_power_spectrumpy) above.

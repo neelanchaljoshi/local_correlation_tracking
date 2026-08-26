@@ -110,6 +110,10 @@ python inertial_mode_pipeline/check_span.py -171.0 hmi.ic_45s_granule --span_low
 
 python inertial_mode_pipeline/run_pipeline.py 2 -171.0 highlat hmi.ic_45s_granule sym \
     --l_max 22 --l_cutoff 15 --mc_samples 500
+
+# Optional: visualize the power spectrum and its Lorentzian fit before/instead of a full run
+python inertial_mode_pipeline/plot_power_spectrum.py 1 uphi highlat hmi.m_720s_dt_1h anti \
+    --fit_range -150 50
 ```
 Fourier-transforms, bandpass-filters, extracts the mode via SVD,
 projects onto Legendre polynomials with chi-squared noise filtering,
@@ -119,7 +123,11 @@ run/cadence to use (e.g. `hmi.ic_45s_granule`, `hmi.m_45s`,
 `hmi.m_720s_dt_1h`) and `mode` is a free-text label such as `rossby`,
 `highlat`, `critlat`, `hfr` — see
 **[INERTIAL_MODE_PIPELINE.md](INERTIAL_MODE_PIPELINE.md)** for the full
-parameter reference.
+parameter reference. `plot_power_spectrum.py` plots the full
+(unfiltered) latitude-averaged power spectrum for one `(m, component)`
+and fits a Lorentzian to it (amplitude, centre frequency, FWHM, SNR,
+with Monte Carlo error bars) — useful for picking a `cent_freq`/`--df`
+or just inspecting a mode without running the full SVD/Legendre chain.
 
 ## Repository layout
 
