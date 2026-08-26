@@ -2,8 +2,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.gridspec as gridspec
+import os
 import sys
-sys.path.append('/data/seismo/joshin/pipeline-test/paper_lct/vorticity')
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'vendor', 'vorticity'))
 from vorticity_func import calculate_vorticity_and_divergence
 
 # %% Load power spectra data for m=3

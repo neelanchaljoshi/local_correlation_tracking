@@ -72,7 +72,6 @@ from tqdm import tqdm
 
 # ── MPS-internal ───────────────────────────────────────────────────────────
 sys.path.insert(0, '/data/seismo/zhichao/codes/pypkg')
-sys.path.append('/data/seismo/joshin/pipeline-test/python_modules/')
 from zclpy3.remap import get_tan_from_lnglat  # noqa: E402
 
 

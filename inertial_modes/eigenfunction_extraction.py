@@ -11,7 +11,6 @@ from astropy.wcs import WCS
 import sys
 from tqdm import tqdm
 sys.path.insert(0, '/data/seismo/zhichao/codes/pypkg')
-sys.path.append('/data/seismo/joshin/pipeline-test/python_modules/')
 import pandas as pd
 from zclpy3.remap import from_cyl_to_tan, get_tan_from_lnglat
 from matplotlib.patches import Circle

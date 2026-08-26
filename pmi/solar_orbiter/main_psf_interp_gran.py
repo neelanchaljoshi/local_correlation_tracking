@@ -13,7 +13,7 @@ from scipy.linalg import lstsq
 from scipy.ndimage import shift
 from scipy.ndimage.interpolation import zoom
 
-sys.path.insert(0, '/data/seismo/joshin/pypkg')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'vendor'))
 
 from mpi4py import MPI
 

@@ -13,7 +13,7 @@ from scipy.ndimage import shift
 from scipy.ndimage.interpolation import zoom
 from scipy.interpolate import CubicSpline
 import h5py
-sys.path.insert(0, '/data/seismo/joshin/pypkg')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'vendor'))
 from josh.misc import xdays
 sys.path.insert(0, '/data/seismo/zhichao/codes/pypkg')
 from zclpy3.remap import from_tan_to_postel
