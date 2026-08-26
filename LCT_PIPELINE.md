@@ -63,6 +63,7 @@ MPI-across-space (`pipeline.py`) and non-MPI-across-time
 | `lct_pipeline/pipeline_chunk.py` | Orchestrates the **non-MPI** pipeline: one SLURM array task per time chunk, single process walks the whole patch grid. |
 | `main.py` | CLI entrypoint for the MPI pipeline. |
 | `main_chunk.py` | CLI entrypoint for the non-MPI chunk pipeline (month mode and range mode). |
+| `check_reading.py` | Standalone diagnostic: exercises only the FITS-reading step (no correlation tracking) for a sample of timesteps, covering both `main.py` and `main_chunk.py`'s time-window logic. See [CLI reference](#check_readingpy-reading-only-diagnostic-either-pipeline). |
 | `run_slurm.sh` | SLURM submission script for `main.py`. |
 | `run_slurm_chunk.sh` | SLURM submission script for `main_chunk.py`. |
 | `config/granulation.ini`, `config/magnetic.ini` | The two production configs (continuum/granulation tracking and magnetogram/magnetic-feature tracking). |
@@ -491,6 +492,49 @@ python main_chunk.py <config_file> --print-nchunks
 | `--chunk`, `-c` | 1-indexed chunk (matches `$SLURM_ARRAY_TASK_ID`). Required unless `--print-nchunks`. |
 | `--print-nchunks` | Print the chunk count for this month/range (for sizing `--array=1-N`) and exit. |
 | `--loglevel`, `-l` | Same as above |
+
+### `check_reading.py` (reading-only diagnostic, either pipeline)
+
+```
+# Month mode (mirrors main.py, or main_chunk.py without --chunk)
+python check_reading.py <config_file> <year> <month> [--sample N | --full]
+
+# Chunk mode (mirrors main_chunk.py with --chunk, 1-indexed)
+python check_reading.py <config_file> <year> <month> --chunk N [--sample N | --full]
+
+# Range mode (mirrors main_chunk.py with no year/month)
+python check_reading.py <config_file> --chunk N [--sample N | --full]
+```
+Exercises *only* `load_keys_table` + `read_fits_pair`/`read_fits_quad`
+for a sample of timesteps — no patch loop, no CCF, no HDF5 output — so
+you can confirm a config/year will actually read before submitting a
+full (much slower) SLURM run. Reuses the exact same bounds-resolution
+functions (`_month_bounds`, `resolve_chunk_bounds`,
+`resolve_range_chunk_bounds`) as `main.py`/`main_chunk.py`, so "chunk"
+and "non-chunk" mode are both covered by this one script rather than
+needing two.
+
+For every timestep it checks, also reports whether the *raw*
+keys-table path (before `io.py`'s `.strip()`) has leading/trailing
+whitespace — the newline-poisoned-SUMS-path pattern
+(`.../S00003\n/magnetogram.fits`) fixed in `io.read_fits_image` and
+`get_hmi_keys/fetch_keys.py`. Finding the anomaly is expected on keys
+files generated before that fix and is not itself a failure; the
+read OK/FAILED counts are what tell you whether it's actually handled.
+
+| Arg | Meaning |
+|---|---|
+| `config_file` | Path to `.ini` config |
+| `year`, `month` | Optional, same month-mode/range-mode rule as `main_chunk.py` |
+| `--chunk`, `-c` | 1-indexed chunk within the month/range. Omit to check the whole month/range instead of one chunk. |
+| `--sample` | Evenly-spaced timesteps to check (default 20) |
+| `--full` | Check every timestep in the window instead of sampling |
+| `--loglevel`, `-l` | Same as above |
+
+Exits 0 if every attempted read succeeded, 1 otherwise (including a
+missing/misconfigured keys file, e.g. an `infile_fmt_4k` pointing
+somewhere that doesn't exist) — safe to use as a pre-flight check in
+a script.
 
 ---
 
