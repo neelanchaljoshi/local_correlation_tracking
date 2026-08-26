@@ -50,7 +50,7 @@ flowchart LR
 
 | Stage | Folder | Reads | Writes | Automation |
 |---|---|---|---|---|
-| 1. Fetch metadata | [`get_hmi_keys/`](GET_HMI_KEYS.md) | NetDRMS catalogue (`show_info`) | `keys-<year>.fits` | Edit-the-source script — no CLI args, no config file |
+| 1. Fetch metadata | [`get_hmi_keys/`](GET_HMI_KEYS.md) | NetDRMS catalogue (`show_info`) | `keys-<year>.fits` | `.ini` config, CLI (`--year`), tested |
 | 2. Track flows | [`lct_pipeline/`](LCT_PIPELINE.md) | `keys-<year>.fits` + HMI FITS images | Per-month or per-chunk HDF5 flow maps | `.ini` config, CLI, SLURM (MPI and non-MPI modes), tested, in CI |
 | 3. Clean & consolidate | [`flow_processing/`](FLOW_PROCESSING.md) | HDF5 flow maps (any granularity — legacy per-year or current per-month/per-chunk) | `processed_data/{uphi,utheta}_*_processed.npy` | Script with 2 positional CLI args + `--data-root`/`--pattern`/`--out-suffix` |
 | 4. Extract eigenfunctions | [`inertial_mode_pipeline/`](INERTIAL_MODE_PIPELINE.md) | `processed_data/*.npy` | `eigenfunction_clean_*.npz` | CLI + diagnostic tool, tested, in CI |
@@ -65,13 +65,14 @@ This README only covers what you need to get the whole chain running.
 
 ```bash
 cd get_hmi_keys
-# Edit config.py (cadence, series, output dir) and main.py (year range) first —
-# there's no CLI for this stage.
-python main.py
+python main.py config/hmi_ic_45s.ini --year 2018
 ```
 Produces one `keys-<year>.fits` per year, containing pointing,
-quality, and storage-path metadata for every observation. Full
-reference: **[GET_HMI_KEYS.md](GET_HMI_KEYS.md)**.
+quality, and storage-path metadata for every observation.
+`config/hmi_ic_45s.ini`/`hmi_m_720s.ini`/`hmi_v_45s.ini` are ready-made
+per-series configs (`[job]` year range, `[series]` DRMS series/cadence,
+`[paths]` output location) — copy and edit one for a different series.
+Full reference: **[GET_HMI_KEYS.md](GET_HMI_KEYS.md)**.
 
 ### 2. Run Local Correlation Tracking
 
@@ -168,8 +169,9 @@ cd inertial_mode_pipeline && python -m pytest tests/ -v
 Both suites run in CI on every push (badge above) and mock the
 `zclpy3`/`mpi4py` dependencies so they run without a real MPI
 installation or the MPS-internal package. `get_hmi_keys/` and
-`flow_processing/` currently have no tests in CI — see their `.md`
-files for details.
+`flow_processing/` have their own `tests/` (config/path-logic unit
+tests, fast and side-effect-free) but aren't wired into CI yet — see
+their `.md` files for details.
 
 ## Related Publications
 

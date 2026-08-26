@@ -5,20 +5,19 @@ year of HMI observation metadata and writes it to a FITS "keys" table
 — the file `lct_pipeline/` reads to know which images exist, where
 they're stored, and whether each frame is usable.
 
-Unlike `lct_pipeline/` and `inertial_mode_pipeline/`, this folder is a
-small, unrefactored script: no CLI arguments, no config file, no
-tests, no SLURM script. You edit two Python files directly before each
-run. This document describes it exactly as it is, including the rough
-edges.
+Config-driven now: a `.ini` file plus `--year` on the command line,
+same convention as `lct_pipeline/`/`inertial_mode_pipeline/`. No more
+hand-editing source before each run.
 
 ## Contents
 
 - [What it does](#what-it-does)
 - [Files](#files)
-- [Configuration (edit-the-source)](#configuration-edit-the-source)
+- [Configuration (`.ini`)](#configuration-ini)
 - [How to run it](#how-to-run-it)
 - [Output file format](#output-file-format)
 - [How this feeds into lct_pipeline](#how-this-feeds-into-lct_pipeline)
+- [Testing](#testing)
 - [Known rough edges](#known-rough-edges)
 
 ---
@@ -29,8 +28,9 @@ For a given year, HMI records its observation metadata (pointing,
 solar radius, quality flags, storage location, ...) in DRMS. This
 stage:
 
-1. Builds a DRMS record-set query string for the full year (or May–Dec
-   only for 2010, when HMI science data begins) at a fixed cadence.
+1. Builds a DRMS record-set query string for the full year (or from a
+   configurable `data_start` date for a year that needs one, e.g. HMI
+   science data begins 2010-05-01) at a fixed cadence.
 2. Calls the NetDRMS `show_info` command-line tool twice — once for
    the metadata keywords, once for each record's on-disk storage path.
 3. Decodes each record's hex quality flag into a boolean `isbad`.
@@ -44,58 +44,66 @@ The actual FITS images get read later, by `lct_pipeline/`, using the
 
 | File | Role |
 |---|---|
-| `config.py` | Module-level constants: cadence, DRMS series name, output directory, quality bitmask, and the list of keywords to fetch. **Edited by hand before each run.** |
-| `main.py` | Entrypoint. Hardcodes the year range to process — **also edited by hand**. |
-| `process.py` | `process_year(yr)` — builds the DRMS query, calls `fetch_keys.get_info`, validates record counts, decodes quality, writes the FITS table. |
-| `fetch_keys.py` | `get_info(ds, keylist)` — the two `show_info` subprocess calls and the raw-text-to-`ndarray` parsing. |
-| `utils/time_helpers.py` | `get_start_stop(yr)` — year boundaries, with the 2010 special case. |
+| `settings.py` | `Config` dataclass + `load_config()` — parses `.ini` files, same convention as `lct_pipeline/lct_pipeline/config.py`. Also defines `BASE_KEY_LIST`, the fixed DRMS keyword schema downstream code depends on by name. |
+| `main.py` | CLI entrypoint: `python main.py <config_file> [--year Y]`. |
+| `process.py` | `process_year(yr, cfg)` — builds the DRMS query, calls `fetch_keys.get_info`, validates record counts, decodes quality, writes the FITS table. |
+| `fetch_keys.py` | `get_info(ds, keylist)` — the two `show_info` subprocess calls and the raw-text-to-`ndarray` parsing. Unchanged — took no hardcoded values to begin with. |
+| `utils/time_helpers.py` | `get_start_stop(yr, data_start=None)` — year boundaries, with an optional configurable start-date override for the first partial year of a series. |
+| `config/*.ini` | Per-series config files — see [Configuration](#configuration-ini). |
+| `tests/` | Unit tests for `settings.py`/`utils/time_helpers.py` — see [Testing](#testing). |
 
-No `.ini`/`.yaml`/`.json` config, no `requirements.txt`, no `tests/`,
-not run by CI.
+`config.py` (the module) doesn't exist any more — renamed to
+`settings.py` so it doesn't collide with the new `config/` directory
+of `.ini` files (same split as `lct_pipeline`, which keeps its
+`config.py` *inside* the `lct_pipeline/` package precisely to avoid
+this collision with its own top-level `config/` directory of `.ini`
+files).
 
-## Configuration (edit-the-source)
+## Configuration (`.ini`)
 
-`config.py`:
+Three ready-made configs ship in `config/`:
 
-| Name | Current value | Meaning |
+| File | Series | Cadence | Writes to |
+|---|---|---|---|
+| `hmi_v_45s.ini` | `hmi.v_45s` (Dopplergram) | 45s | `IterativeLCT/hmi.v_45s/keys-%Y.fits` — reproduces the values that were previously hardcoded in `config.py`/`main.py` |
+| `hmi_ic_45s.ini` | `hmi.ic_45s` (continuum, granulation tracking) | 45s | `IterativeLCT/hmi.ic_45s/keys_new_swan/keys-%Y.fits` — matches `lct_pipeline/config/granulation.ini`'s `infile_fmt_4k` exactly |
+| `hmi_m_720s.ini` | `hmi.m_720s` (magnetogram, magnetic-feature tracking) | 720s | `IterativeLCT/hmi.m_720s/keys_new_swan/keys-%Y.fits` — matches `lct_pipeline/config/magnetic.ini`'s `infile_fmt_4k` exactly |
+
+| Section | Key | Meaning |
 |---|---|---|
-| `cadence` | `45` | Seconds between records; used both in the series name and the DRMS `@Ns` sampling interval. |
-| `seriesname` | `f'hmi.v_{cadence}s'` → `hmi.v_45s` | DRMS series to query. (A comment in the source still says "HMI Continuum Intensity" — stale, left over from when this was `hmi.ic_45s`.) |
-| `outdir` | `/scratch/seismo/joshin/pipeline-test/IterativeLCT/hmi.v_45s` | Output directory. **Must already exist** — this code never creates it. |
-| `QbitsPass` | `0b0...0` (32 zero bits) | Quality bitmask. A frame passes only if `(quality \| QbitsPass) == QbitsPass` — with an all-zero mask, only `quality == 0x00000000` passes (strictest possible setting; any flag at all rejects the frame). |
-| `KeyList` | 14 `(name, dtype)` tuples | DRMS keywords fetched, in order: `t_rec`, `t_obs`, `obs_vr`, `quality`, `crpix1/2`, `crval1/2`, `cdelt1/2`, `crota2`, `crln_obs`, `crlt_obs`, `rsun_obs`. |
+| `[job]` | `yr_start`, `yr_stop` | Inclusive year range processed when `--year` is omitted on the CLI. |
+| `[series]` | `seriesname` | DRMS series to query, e.g. `hmi.v_45s`. |
+| | `cadence_seconds` | Seconds between records; used both in the DRMS `@Ns` sampling interval and to compute the expected record count. |
+| | `extra_keys` | Comma-separated extra DRMS keywords to fetch beyond `BASE_KEY_LIST` (`settings.py`) — the 14 keywords `lct_pipeline`/downstream code needs by name. Extras are typed `float`; leave empty unless you need something extra. |
+| `[data_availability]` | `data_start` | Optional ISO date (`YYYY-MM-DD`). If set and its year matches the year being processed, the query window starts here instead of Jan 1 — e.g. `2010-05-01` for HMI's science-data start. Leave empty for series/years with no such cutoff. |
+| `[quality]` | `qbits_pass` | Quality bitmask (`0x...`, `0b...`, or plain decimal — `int(..., 0)` auto-detects the base). A frame passes only if `(quality \| qbits_pass) == qbits_pass`; `0x00000000` is strictest (only `quality == 0` passes). |
+| `[paths]` | `outdir` | Output root directory — **created automatically now** (`Config.__post_init__`), unlike before. |
+| | `outfile_fmt` | strftime-format filename, relative to `outdir` (default `keys-%Y.fits`). Set this to match whatever subdirectory an `lct_pipeline` `.ini`'s `infile_fmt_4k`/`infile_fmt_2k` expects, e.g. `keys_new_swan/keys-%Y.fits` — this is what closes the path-mismatch rough edge documented below. |
 
-`main.py`:
-```python
-for yr in range(2018, 2019):  # Change range as needed
-    process_year(yr)
-```
-The year range is a literal you edit before every run — there's no
-`--year` flag.
-
-`utils/time_helpers.py`:
-```python
-def get_start_stop(yr):
-    if yr == 2010:
-        return datetime(2010, 5, 1), datetime(2011, 1, 1)
-    else:
-        return datetime(yr, 1, 1), datetime(yr + 1, 1, 1)
-```
-2010 is special-cased because HMI science observations start
-2010-05-01 — `keys-2010.fits` correspondingly has fewer rows than a
-full year.
+`BASE_KEY_LIST` itself (the 14 required keywords: `t_rec`, `t_obs`,
+`obs_vr`, `quality`, `crpix1/2`, `crval1/2`, `cdelt1/2`, `crota2`,
+`crln_obs`, `crlt_obs`, `rsun_obs`) stays a Python constant in
+`settings.py`, not an `.ini` value — it's a fixed downstream contract
+(`lct_pipeline` reads these columns by name), not a per-run tunable,
+same reasoning as `lct_pipeline`'s own HDF5 dataset names not being
+configurable either.
 
 ## How to run it
 
-Both `main.py` and `process.py` use flat imports (`from process import
-...`, not relative imports), so it must run with this folder as the
-working directory:
+`main.py`/`process.py`/`fetch_keys.py` use flat imports (`from process
+import ...`), so this must run with this folder as the working
+directory:
 
 ```bash
 cd get_hmi_keys
-# 1. Edit config.py: cadence, seriesname, outdir
-# 2. Edit main.py: the year range
-python main.py
+python main.py config/hmi_ic_45s.ini --year 2018
+```
+
+Omit `--year` to process every year in `[job] yr_start`–`yr_stop`
+from the config:
+
+```bash
+python main.py config/hmi_ic_45s.ini
 ```
 
 Requires the NetDRMS `show_info` binary on `PATH` and a working
@@ -106,11 +114,15 @@ Each year takes a while (`show_info` scans the whole catalogue twice —
 once for keywords, once for storage paths); `main.py` prints elapsed
 time per year.
 
+To point at a different series or output location, copy one of the
+`config/*.ini` files and edit it — no source changes needed.
+
 ## Output file format
 
-`{outdir}/keys-{yr}.fits` — a FITS binary table, one row per
-`cadence`-second interval in the year. Confirmed schema (2018,
-700,800 rows at 45s cadence):
+`{outdir}/{outfile_fmt expanded for the year}` — a FITS binary table,
+one row per `cadence_seconds`-second interval in the year. Confirmed
+schema (2018, `hmi.v_45s`, 45s cadence — verified against real DRMS
+data in this stage's tests/manual runs):
 
 | Column | dtype | Example |
 |---|---|---|
@@ -125,14 +137,7 @@ time per year.
 | `crln_obs`, `crlt_obs` | `f8` | `346.055664`, `-3.005263` |
 | `rsun_obs` | `f8` | `976.046936` (arcsec) |
 | `isbad` | `bool` | `False` |
-| `path` | `S45` | `/pfs/scratch/SUMS/SUM1768/D1005610960/S00008\n` (note the trailing newline, preserved from the raw `show_info` output) |
-
-Naming convention: `keys-<YYYY>.fits`. Some downstream paths this
-repo's `.ini` configs point to (`keys_new_swan/`, `keys_2k/`,
-`keys_all_bad_excluded/keys_2k_2k/`) are **not** produced by this
-code — those subdirectories and the 2k-resolution variants were
-created by a manual/separate step not present in this repo. See
-[Known rough edges](#known-rough-edges).
+| `path` | `S45` | `/pfs/scratch/SUMS/SUM1768/D1005610960/S00008` — some records carry a trailing newline preserved from the raw `show_info` output (a real, previously-reported bug downstream — see `lct_pipeline`'s `io.read_fits_image`, which now strips it) |
 
 ## How this feeds into lct_pipeline
 
@@ -142,27 +147,40 @@ these files, and `io.load_keys_table(year, cfg)` does
 `Table.read(datetime(year, 1, 1).strftime(cfg.infile_fmt))` to load
 one. Downstream, `read_fits_pair`/`read_fits_quad` use the `isbad`,
 `path`, and `t_rec` columns; `pipeline.py` uses `crln_obs`; the
-`dataset_cadence_seconds` config value should match the `cadence` this
-stage used to generate the table.
+`.ini`'s `dataset_cadence_seconds` should match `cadence_seconds` used
+to generate the table. `config/hmi_ic_45s.ini` and
+`config/hmi_m_720s.ini`'s `outfile_fmt` are set to write directly to
+the exact paths `granulation.ini`/`magnetic.ini` already expect, so no
+manual copying/renaming is needed for those two.
+
+## Testing
+
+```bash
+cd get_hmi_keys && python -m pytest tests/ -v
+```
+
+| Test file | Covers |
+|---|---|
+| `test_settings.py` | `load_config()` parsing, `Config.output_path()`'s strftime templating and auto-mkdir, `extra_keys` merging, error paths (missing file, missing required field, `yr_stop < yr_start`) |
+| `test_time_helpers.py` | `get_start_stop()`'s `data_start` override logic |
+
+Pure parsing/path-logic tests, no DRMS calls, no real data, side-effect-free
+— safe to run anytime. `process.py`/`fetch_keys.py` (the actual DRMS
+I/O) have no dedicated tests — they need a live NetDRMS site
+connection and take a while per year; validated manually against real
+`show_info` output instead (see this stage's commit history for the
+exact commands used). Not part of CI.
 
 ## Known rough edges
 
-- **No CLI, no config file** — every run requires hand-editing
-  `config.py` (series/cadence/output dir) and `main.py` (year range).
-  There's no record of which series/years have already been generated
-  other than the files present in `outdir`.
-- **Path mismatch with `lct_pipeline`'s configs.** This code writes
-  flat into `{outdir}/keys-{yr}.fits`, but both `granulation.ini` and
-  `magnetic.ini` point at subdirectories (e.g. `keys_new_swan/`,
-  `keys_2k/`) that this code never creates. On disk, those
-  subdirectories and their 2k-resolution variants exist from a prior
-  manual reorganization — if you regenerate keys from scratch with
-  this code as-is, you'll need to move/rename the output to match
-  whatever `.ini` you're using, or update the `.ini`'s `infile_fmt_4k`
-  to point at the flat `outdir` path this code actually produces.
-- **No validation that `outdir` exists** — the FITS write fails with a
-  generic I/O error if you forget to create it first.
-- **Strict quality mask by default** (`QbitsPass = 0`) — only
-  perfect-quality frames pass `isbad = False`. If your dataset needs a
-  looser tolerance, `QbitsPass` needs hand-editing too.
-- **No tests, not part of CI.**
+- **`process.py`/`fetch_keys.py` have no automated tests** — DRMS
+  access requires a live site connection with no fast local mock, and
+  a full-year query is slow. Validated manually instead (small
+  time-window queries, and a full `process_year()` run against a
+  scratch output directory) — see [Testing](#testing).
+- **Strict quality mask by default** (`qbits_pass = 0x00000000`) —
+  only perfect-quality frames pass `isbad = False`. Loosen it per
+  config if your dataset needs a wider tolerance.
+- **No record of which series/years have already been generated**
+  other than the files present in `outdir` — there's no manifest or
+  state tracking across runs.
