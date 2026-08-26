@@ -1,14 +1,17 @@
 # flow_processing — Detailed Documentation
 
-Stage 3 of the pipeline. Concatenates the per-year LCT flow-map HDF5
-files (from `lct_pipeline/`) into one 2010–2024 time series per flow
-component, cleans it, and writes the `.npy` files that
+Stage 3 of the pipeline. Concatenates the LCT flow-map HDF5 files
+(from `lct_pipeline/` — any granularity: legacy per-year, or the
+current pipeline's per-month/per-chunk output) into one time series per
+flow component, cleans it, and writes the `.npy` files that
 `inertial_mode_pipeline/` loads.
 
-Like `get_hmi_keys/`, this folder is an unrefactored script: no CLI
-flags beyond two positional arguments, no config file, and — as
-documented below — its one test is currently broken. This document
-describes it exactly as it is.
+Like `get_hmi_keys/`, this folder started as an unrefactored script —
+no config file, minimal structure. `getdata()`/`save()` now take
+explicit `data_root`/`pattern`/`suffix` parameters (`main.py`:
+`--data-root`/`--pattern`/`--out-suffix`) instead of source lines that
+had to be hand-edited to switch datasets; see
+[Known rough edges](#known-rough-edges) for what's still rough.
 
 ## Contents
 
@@ -25,13 +28,16 @@ describes it exactly as it is.
 
 ## What it does
 
-`lct_pipeline/` writes one HDF5 file per year (or per month/chunk, if
-using the newer chunked pipeline — but this stage currently only knows
-how to read the older per-year layout, see
-[Known rough edges](#known-rough-edges)). This stage:
+`lct_pipeline/` writes flow-map HDF5 files at one of three
+granularities depending on which pipeline mode produced them: one file
+per year (legacy, pre-refactor), one file per month (`pipeline.py`/MPI
+mode), or one file per chunk (`pipeline_chunk.py`/non-MPI mode). This
+stage:
 
-1. Loads and concatenates 15 years (2010–2024) of one flow component
-   (`uphi` or `utheta`) into a single `(nt, nlat, nlng)` array.
+1. Loads and concatenates however many files match `pattern` under
+   `data_root` (any of the three granularities, sorted by time) of one
+   flow component (`uphi` or `utheta`) into a single `(nt, nlat, nlng)`
+   array.
 2. Removes the per-pixel time-median (the static flow pattern).
 3. Rejects >3σ outliers (median-absolute-deviation based) as NaN.
 4. Fits and removes an annual + semi-annual sinusoidal systematic
@@ -44,12 +50,14 @@ how to read the older per-year layout, see
 
 | File | Role |
 |---|---|
-| `main.py` | Entrypoint: `python main.py <which_flow> <which_data>`. Hardcodes the processing sequence and plot indices. |
-| `flow_data.py` | The `FlowData` class — all the actual logic. |
-| `utils/io_utils.py` | `save_flow_array()` — the output-naming convention. |
+| `main.py` | Entrypoint: `python main.py <which_flow> <which_data> [--data-root] [--pattern] [--out-suffix]`. Hardcodes the processing sequence and plot indices. |
+| `flow_data.py` | The `FlowData` class — all the actual logic, plus `LEGACY_ROOT`/`LEGACY_GLOB_PATTERNS` (default input location/selection for known legacy datasets). |
+| `utils/io_utils.py` | `save_flow_array()` — the output-naming convention, plus `LEGACY_OUTPUT_SUFFIX` (default output suffix for known legacy datasets). |
 | `utils/fitting.py` | `sin_fit()` — the annual+semi-annual model function. |
 | `utils/plotting.py` | `make_plot()` — the four diagnostic plot types. |
-| `tests/test_flow_data.py` | One integration-style test — see [Known rough edges](#known-rough-edges), it does not currently pass. |
+| `tests/test_flow_data.py` | One integration-style test against real data — see [Known rough edges](#known-rough-edges), it now passes but is not side-effect-free. |
+| `tests/test_getdata_synthetic.py` | `getdata()`'s glob/sort/error-handling logic against synthetic fixtures — fast, safe to run anytime. |
+| `tests/test_io_utils.py` | `save_flow_array()`'s suffix logic, patched to a temp directory — fast, safe to run anytime. |
 
 No `.ini`/`.yaml`/`.json` config, no SLURM script, no `requirements.txt`,
 no `conftest.py`, not run by CI.
@@ -67,22 +75,41 @@ flow.save()
 (`main.py` also calls `.plot()` between several of these steps — see
 [Output data](#output-data).)
 
-### `getdata()`
+### `getdata(data_root=None, pattern=None)`
 
-Loops years 2010–2024, opening
-`/scratch/seismo/joshin/pipeline-test/IterativeLCT/{which_data}/20{YY}_ntry_3_grid_len_5_dspan_6_dstep_30_extent_73.hdf5`
-for each, reading `tstart`, `<which_flow>`, `latitude`, `longitude`,
-and concatenating along the time axis. Converts `tstart` (TAI strings)
+Globs `data_root/pattern`, reads `tstart`, `<which_flow>`, `latitude`,
+`longitude` from every matching file, and concatenates them along the
+time axis — **sorted by each file's own recorded timestamps, not by
+filename**, so it works the same way regardless of whether the source
+is one file per year (the legacy pre-refactor LCT pipeline), one file
+per month (the current `lct_pipeline`'s MPI/month mode, `pipeline.py`),
+or one file per chunk (the current `lct_pipeline`'s non-MPI/chunk mode,
+`pipeline_chunk.py`) — all three write the same
+`tstart`/`uphi`/`utheta`/`latitude`/`longitude` schema
+(`lct_pipeline.io.create_output_hdf5`). Converts `tstart` (TAI strings)
 to decimal years via `astropy.time.Time(..., scale='tai').decimalyear`.
+Raises `ValueError` if a matched file's `latitude`/`longitude` grid
+doesn't match the others (a signal you've globbed together files from
+two different runs), and `FileNotFoundError` if nothing matches.
 
-**This filename template is hardcoded to one specific LCT run naming
-convention (granulation-tracking parameters) and must be hand-edited**
-to switch datasets — there's a second, commented-out template line
-directly above it for `hmi.m_720s`-style runs
-(`20{YY}_dt_1h_dspan_6h_dstep_120m.hdf5`). Whichever one is active
-must match both the actual files on disk under `{which_data}/` and the
-corresponding line in `utils/io_utils.py` (see below) — the two are
-not derived from a shared config and can drift out of sync.
+- **`data_root`** (optional): directory to search. Defaults to the
+  legacy `IterativeLCT/{which_data}/` layout, for exact backward
+  compatibility with existing callers. For current `lct_pipeline`
+  output, pass the same `rootdir_out` from the `.ini` config used to
+  produce it, e.g. `.../local_correlation_tracking/data/magnetic`.
+- **`pattern`** (optional): glob pattern, relative to `data_root`,
+  selecting which files to read. A single directory can hold more than
+  one run's files side by side with different naming/cadence — e.g.
+  `IterativeLCT/hmi.m_720s/` has both a `_dt_1h_dspan_6h_dstep_120m`
+  run and an unrelated `_ntry_3_..._extent_73_new` run for the same
+  years — so `which_data` alone isn't enough to disambiguate. Defaults
+  to `LEGACY_GLOB_PATTERNS[which_data]` (`flow_data.py`, currently
+  covers `hmi.ic_45s` and `hmi.m_720s`) when `data_root` isn't given;
+  **raises `ValueError`** if omitted for any other `which_data`, since
+  there's no safe default to guess. For current `lct_pipeline` output:
+  `*_gran_dspan*_4k.hdf5` (month mode, granulation, 4k) or the same
+  with `_chunk` before `.hdf5` (chunk mode) — swap `gran`→`mag` and
+  `4k`→`2k` per the config's `segname`/`downsample`.
 
 ### `remove_median()`
 
@@ -114,10 +141,17 @@ points via `scipy.optimize.curve_fit` and subtracts the fitted curve,
 evaluated over the *full* time axis, from the pixel's data in place.
 Serial, one `curve_fit` call per pixel (5,329 total).
 
-### `save()`
+### `save(suffix=None)`
 
 Delegates to `utils.io_utils.save_flow_array()` — see
 [Output data](#output-data) for the exact naming convention.
+`suffix` defaults to `LEGACY_OUTPUT_SUFFIX[which_data]`
+(`utils/io_utils.py`) for known legacy datasets; required (raises
+`ValueError`) otherwise. Keyed by the same `which_data` string as
+`getdata()`'s `LEGACY_GLOB_PATTERNS`, so input selection and output
+naming can no longer silently drift out of sync for the legacy case —
+previously two independent hardcoded/commented-out lines had to be
+hand-toggled together.
 
 ## How to run it
 
@@ -127,23 +161,45 @@ folder as the working directory:
 
 ```bash
 cd flow_processing
-# Before running: check that flow_data.py::getdata's active HDF5
-# filename template and utils/io_utils.py's naming suffix both match
-# the dataset you're about to process (see "Known rough edges" below).
+# Legacy pre-refactor LCT output (unchanged usage):
 python main.py uphi hmi.ic_45s
 python main.py utheta hmi.ic_45s
+
+# Current lct_pipeline output (month mode, granulation, 4k) — point at
+# the same rootdir_out the .ini config used to produce it:
+python main.py uphi hmi.ic_45s \
+    --data-root /data/seismo/joshin/pipeline-test/local_correlation_tracking/data/granulation \
+    --pattern '*_gran_dspan*_4k.hdf5' \
+    --out-suffix _dspan24h_dstep30m_4k
+
+# Current lct_pipeline output (chunk mode, magnetic, 4k):
+python main.py uphi hmi.m_720s \
+    --data-root /data/seismo/joshin/pipeline-test/local_correlation_tracking/data/magnetic \
+    --pattern '*_mag_dspan*_4k_chunk.hdf5' \
+    --out-suffix _chunk_dspan6h_dstep2h_4k
 ```
+`--out-suffix` is whatever you'll then use as the trailing part of
+`run_pipeline.py`'s `data` argument for
+`inertial_mode_pipeline/` — pick something that uniquely identifies
+this specific LCT run (dspan/dstep/resolution), since `which_data`
+alone doesn't.
 
 Run it **once per flow component** (`uphi` and `utheta` separately) —
-`inertial_mode_pipeline/` needs both. There's no `--help`; wrong
-argument count just prints a usage line and exits.
+`inertial_mode_pipeline/` needs both. `--help` lists all flags; wrong
+positional argument count still exits with a usage message.
 
 ## Input data
 
-- `/scratch/seismo/joshin/pipeline-test/IterativeLCT/{which_data}/20{YY}_....hdf5`
-  for `YY` in `10..24` — one file per year, in the schema
+- **Legacy** (default when `--data-root`/`--pattern` are omitted):
+  `/scratch/seismo/joshin/pipeline-test/IterativeLCT/{which_data}/20{YY}_....hdf5`
+  for `YY` in `10..24` — one file per year.
+- **Current `lct_pipeline`**: whatever `--data-root`/`--pattern` you
+  pass — one file per month (`pipeline.py`/MPI mode) or one file per
+  chunk (`pipeline_chunk.py`/non-MPI mode), each in the same schema
   `lct_pipeline/lct_pipeline/io.py::create_output_hdf5` writes
-  (`tstart`, `uphi`, `utheta`, `latitude`, `longitude` datasets).
+  (`tstart`, `uphi`, `utheta`, `latitude`, `longitude` datasets) —
+  `getdata()` concatenates however many files match, sorted by time,
+  regardless of granularity (see [`getdata()`](#getdatadata_rootnone-patternnone)).
 - `data/{crln_obs,crlt_obs,rsun_obs}.npy` — loaded once at import time
   as `FlowData` class attributes (shared across all instances). Only
   `crlt_obs` is actually used (as the sinusoid-fit seed).
@@ -151,11 +207,13 @@ argument count just prints a usage line and exits.
 ## Output data
 
 - **Flow array**: `data/processed_data/{which_flow}_{which_data_with_underscores}{suffix}_processed.npy`
-  — a plain `np.save` of the `(nt, nlat, nlng)` `float32` array
-  (currently `(21436, 73, 73)`, ~457 MB, NaN at rejected/gapped
-  points). `{suffix}` is either `_granule` or `_dt_1h` depending on
-  which line is active in `utils/io_utils.py` — see
-  [Known rough edges](#known-rough-edges).
+  — a plain `np.save` of the `(nt, nlat, nlng)` `float32` array (for
+  the legacy 2010–2024 run, `(21436, 73, 73)`, ~457 MB, NaN at
+  rejected/gapped points). `{suffix}` is `--out-suffix`
+  (`main.py`) / `save(suffix=...)`, defaulting to
+  `LEGACY_OUTPUT_SUFFIX[which_data]` (`_granule` for `hmi.ic_45s`,
+  `_dt_1h` for `hmi.m_720s`) for known legacy datasets — pick your own
+  for current `lct_pipeline` output, see [How to run it](#how-to-run-it).
 - **Diagnostic plots** (relative to cwd, so `flow_processing/figures_processing/`
   when run as intended): `flow_histogram_{1,2,3}.png`,
   `time_series_{2,4}.png`, `flow_data_plot_5.png`. The numeric suffix
@@ -178,36 +236,47 @@ must be `hmi.ic_45s_granule` (dots become underscores, so
 
 ## Known rough edges
 
-- **Two hardcoded, must-match-by-hand switches.** Selecting which LCT
-  dataset to process requires toggling a commented-out line in both
-  `flow_data.py::getdata` (the input filename template) and
-  `utils/io_utils.py::save_flow_array` (the output suffix) — nothing
-  ties them together, so it's possible to read one dataset's HDF5
-  files and accidentally label the output as the other.
-- **Input path doesn't match either `.ini`'s configured output.**
-  This reads from `/scratch/seismo/joshin/pipeline-test/IterativeLCT/{which_data}/`,
-  which is where the legacy (pre-refactor) LCT code wrote its output —
-  not `lct_pipeline/config/granulation.ini`'s `rootdir_out`
-  (`/data/seismo/joshin/pipeline-test/pmi_test/supergranular_flow/final_sg_compare/data`)
-  or `magnetic.ini`'s. If you generate new LCT output with the current
-  `lct_pipeline/`, you'll need to either copy/symlink it into the
-  `IterativeLCT/` layout this stage expects, or update `getdata()`'s
-  path template to point at your actual `rootdir_out`.
-- **Only reads the older per-year, all-months-in-one-file HDF5
-  layout** — it has no support for the monthly files
-  `lct_pipeline/pipeline.py` (MPI mode) produces, nor the
-  one-row-per-chunk files `pipeline_chunk.py` (non-MPI mode) produces.
-  Bridging either of those newer layouts into what this stage expects
-  would need new concatenation logic here.
-- **The one test doesn't currently pass.** `tests/test_flow_data.py`
-  calls `FlowData("uphi", "hmi.m_720s").getdata()`, but the *active*
-  filename template in `getdata()` is the granulation-tracking one —
-  the actual files under `hmi.m_720s/` use different naming, so
-  `getdata()` raises before the test's first assertion. It's also not
-  a unit test in the usual sense: it reads all 15 real HDF5 files, runs
-  the full 5,329-pixel curve-fit loop, and **overwrites the real
-  production `.npy` output** — running it is not side-effect-free.
-  Not part of CI.
+- ~~Two hardcoded, must-match-by-hand switches~~ **Fixed.**
+  `getdata(data_root, pattern)` and `save(suffix)` are now explicit
+  parameters (`--data-root`/`--pattern`/`--out-suffix` on `main.py`)
+  instead of commented-out source lines you had to toggle by hand in
+  two different files. The legacy defaults (`LEGACY_GLOB_PATTERNS` in
+  `flow_data.py`, `LEGACY_OUTPUT_SUFFIX` in `utils/io_utils.py`) are
+  both keyed by the same `which_data` string, so they can't drift out
+  of sync for the datasets they cover.
+- ~~Input path doesn't match either `.ini`'s configured output~~
+  **Fixed for finding it — not for the layout mismatch (below).**
+  `--data-root`/`--pattern` (or `getdata(data_root=, pattern=)`
+  directly) now point at any directory, including a `rootdir_out` from
+  the current `lct_pipeline`'s `.ini` configs.
+- ~~Only reads the older per-year, all-months-in-one-file HDF5
+  layout~~ **Fixed.** `getdata()` globs `pattern` under `data_root` and
+  concatenates *every* matching file, sorted by each file's own
+  recorded timestamps rather than by filename — this handles the
+  legacy one-file-per-year layout, `pipeline.py`'s one-file-per-month
+  layout, and `pipeline_chunk.py`'s one-file-per-chunk layout
+  identically, since all three share the same HDF5 schema. See
+  [`getdata()`](#getdatadata_rootnone-patternnone).
+- **No real current-`lct_pipeline` output exists yet to point this
+  at.** As of this writing, neither `granulation.ini`'s nor
+  `magnetic.ini`'s `rootdir_out` has ever been populated by an actual
+  `main.py`/`main_chunk.py` run — so the new-pipeline code paths above
+  are validated against synthetic fixtures
+  (`tests/test_getdata_synthetic.py`) rather than real files. Once a
+  real run exists, double-check the actual filenames it produced
+  against the `--pattern` you pass — `output_filename()`/
+  `chunk_output_filename()` in `lct_pipeline/config.py`/
+  `pipeline_chunk.py` are the source of truth.
+- **The legacy test still reads real data and isn't side-effect-free.**
+  `tests/test_flow_data.py`'s `FlowData("uphi", "hmi.m_720s").getdata()`
+  now works (previously it raised before the first assertion — see the
+  history of this doc), but the test still reads all 15 real HDF5
+  files, runs the full 5,329-pixel curve-fit loop, and **overwrites the
+  real production `.npy` output** when it calls `.save()`. Not part of
+  CI; don't run it casually. `tests/test_getdata_synthetic.py` and
+  `tests/test_io_utils.py` cover the same logic with synthetic data and
+  no side effects, and are safe to run anytime:
+  `cd flow_processing && python -m pytest tests/test_getdata_synthetic.py tests/test_io_utils.py -v`.
 - **Hardcoded diagnostic-plot parameters**: histogram range `±2000
   m/s`, time-series pixel `(35, 35)`, sample-frame index `1576` — none
   configurable without editing `utils/plotting.py`.

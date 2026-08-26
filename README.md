@@ -52,7 +52,7 @@ flowchart LR
 |---|---|---|---|---|
 | 1. Fetch metadata | [`get_hmi_keys/`](GET_HMI_KEYS.md) | NetDRMS catalogue (`show_info`) | `keys-<year>.fits` | Edit-the-source script — no CLI args, no config file |
 | 2. Track flows | [`lct_pipeline/`](LCT_PIPELINE.md) | `keys-<year>.fits` + HMI FITS images | Per-month or per-chunk HDF5 flow maps | `.ini` config, CLI, SLURM (MPI and non-MPI modes), tested, in CI |
-| 3. Clean & consolidate | [`flow_processing/`](FLOW_PROCESSING.md) | HDF5 flow maps | `processed_data/{uphi,utheta}_*_processed.npy` | Script with 2 positional CLI args, hand-edit for dataset selection |
+| 3. Clean & consolidate | [`flow_processing/`](FLOW_PROCESSING.md) | HDF5 flow maps (any granularity — legacy per-year or current per-month/per-chunk) | `processed_data/{uphi,utheta}_*_processed.npy` | Script with 2 positional CLI args + `--data-root`/`--pattern`/`--out-suffix` |
 | 4. Extract eigenfunctions | [`inertial_mode_pipeline/`](INERTIAL_MODE_PIPELINE.md) | `processed_data/*.npy` | `eigenfunction_clean_*.npz` | CLI + diagnostic tool, tested, in CI |
 
 Each folder's linked `.md` is the exhaustive reference for that
@@ -92,15 +92,22 @@ window without day-offset arithmetic: **[LCT_PIPELINE.md](LCT_PIPELINE.md)**.
 
 ```bash
 cd flow_processing
-# Check that flow_data.py::getdata's active filename template and
-# utils/io_utils.py's output suffix both match the dataset you're
-# about to process — see FLOW_PROCESSING.md for why this matters.
+# Legacy pre-refactor LCT output:
 python main.py uphi   hmi.ic_45s
 python main.py utheta hmi.ic_45s
+
+# Current lct_pipeline output: point --data-root at the same rootdir_out
+# the .ini config used, and pick a --out-suffix that identifies this run
+# — see FLOW_PROCESSING.md for the full --data-root/--pattern reference.
+python main.py uphi hmi.ic_45s \
+    --data-root ../data/granulation --pattern '*_gran_dspan*_4k.hdf5' \
+    --out-suffix _dspan24h_dstep30m_4k
 ```
-Concatenates 2010–2024, removes the static median flow, rejects
-outliers, fits out an annual/semi-annual systematic, and writes one
-`.npy` per flow component. Full reference: **[FLOW_PROCESSING.md](FLOW_PROCESSING.md)**.
+Concatenates whatever files `--pattern` matches (any granularity —
+legacy per-year, or the current pipeline's per-month/per-chunk
+output), removes the static median flow, rejects outliers, fits out an
+annual/semi-annual systematic, and writes one `.npy` per flow
+component. Full reference: **[FLOW_PROCESSING.md](FLOW_PROCESSING.md)**.
 
 ### 4. Extract an inertial-mode eigenfunction
 

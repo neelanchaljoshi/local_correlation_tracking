@@ -1,3 +1,4 @@
+import glob
 import numpy as np
 import h5py
 import os
@@ -9,6 +10,20 @@ from scipy.optimize import curve_fit
 from utils.fitting import sin_fit
 from utils.plotting import make_plot
 from utils.io_utils import save_flow_array
+
+
+# Legacy per-year LCT output (the pre-refactor lct_pipeline). A single
+# directory can hold more than one run's files side by side with
+# different naming/cadence (e.g. IterativeLCT/hmi.m_720s/ has both a
+# "_dt_1h_dspan_6h_dstep_120m" run and an unrelated
+# "_ntry_3_..._extent_73_new" run for the same years) -- which_data
+# alone isn't enough to disambiguate, so each known dataset gets an
+# explicit glob pattern rather than one hardcoded template.
+LEGACY_ROOT = '/scratch/seismo/joshin/pipeline-test/IterativeLCT'
+LEGACY_GLOB_PATTERNS = {
+    'hmi.ic_45s': '20*_ntry_3_grid_len_5_dspan_6_dstep_30_extent_73.hdf5',
+    'hmi.m_720s': '20*_dt_1h_dspan_6h_dstep_120m.hdf5',
+}
 
 
 class FlowData:
@@ -42,35 +57,94 @@ class FlowData:
         self.which_flow = which_flow
         self.which_data = which_data
 
-    def getdata(self):
+    def getdata(self, data_root=None, pattern=None):
         """
-        Loads flow data from HDF5 files and prepares the time and spatial arrays.
-        This method reads multiple HDF5 files, extracts flow data, timestamps, and spatial coordinates,
-        and combines them into a single flow array.
+        Loads and concatenates every HDF5 file matching `pattern` under
+        `data_root`, sorted by each file's own recorded timestamps (not
+        filename order), and prepares the time and spatial arrays.
+
+        This works the same way regardless of whether the source is one
+        file per year (the legacy pre-refactor LCT pipeline), one file
+        per month (the current lct_pipeline MPI/month mode,
+        `pipeline.py`), or one file per chunk (the current lct_pipeline
+        non-MPI/chunk mode, `pipeline_chunk.py`) — all three write the
+        same tstart/uphi/utheta/latitude/longitude schema
+        (`lct_pipeline.io.create_output_hdf5`).
+
+        Parameters:
+            data_root (str, optional): Directory to search. Defaults to
+                the legacy `IterativeLCT/{which_data}/` layout for
+                backward compatibility with existing callers.
+            pattern (str, optional): Glob pattern (relative to
+                data_root) selecting which files to include. Needed
+                because a single directory can hold more than one run's
+                files side by side with different naming/cadence.
+                Defaults to `LEGACY_GLOB_PATTERNS[which_data]` when
+                data_root is not given. Required (raises ValueError if
+                omitted) when which_data has no known legacy pattern —
+                e.g. any current lct_pipeline output — since there is no
+                safe default to guess. For current lct_pipeline output,
+                pass the same `rootdir_out` from the `.ini` config as
+                data_root, and a pattern like
+                `*_gran_dspan*_4k.hdf5` (month mode) or
+                `*_gran_dspan*_4k_chunk.hdf5` (chunk mode) — `gran`/`mag`
+                and `4k`/`2k` per the config's segname/downsample.
         Returns:
             self (FlowData): The instance of FlowData with the flow array, time array, and spatial coordinates.
         """
+        if data_root is None:
+            data_root = os.path.join(LEGACY_ROOT, self.which_data)
+        if pattern is None:
+            try:
+                pattern = LEGACY_GLOB_PATTERNS[self.which_data]
+            except KeyError:
+                raise ValueError(
+                    f'No default glob pattern known for which_data={self.which_data!r}. '
+                    f'Pass pattern= explicitly — known legacy datasets are '
+                    f'{sorted(LEGACY_GLOB_PATTERNS)}; for current lct_pipeline '
+                    f"output use something like '*_gran_dspan*_4k.hdf5' "
+                    f"(month mode) or '*_gran_dspan*_4k_chunk.hdf5' (chunk mode).")
 
-        for i, n in tqdm(enumerate(np.arange(10, 25))):
-            # file_path = f'/scratch/seismo/joshin/pipeline-test/IterativeLCT/{self.which_data}/20{n}_dt_1h_dspan_6h_dstep_120m.hdf5' #for m_720s
-            file_path = f'/scratch/seismo/joshin/pipeline-test/IterativeLCT/{self.which_data}/20{n}_ntry_3_grid_len_5_dspan_6_dstep_30_extent_73.hdf5' # for ic_45s
+        search = os.path.join(data_root, pattern)
+        files = sorted(glob.glob(search))
+        if not files:
+            raise FileNotFoundError(f'No files matched {search!r}')
+
+        t_chunks = []
+        flow_chunks = []
+        ref_lat = ref_lon = None
+        for file_path in tqdm(files, desc='Reading HDF5 files'):
             with h5py.File(file_path, 'r') as f1:
                 t = f1['tstart'][()]
                 flow = f1[self.which_flow][()]
                 lat = f1['latitude'][()]
                 lon = f1['longitude'][()]
 
-                if i == 0:
-                    self.flow_array = flow
-                    self.t = t
-                    self.lat_og = lat
-                    self.lon_og = lon
-                else:
-                    self.flow_array = np.append(self.flow_array, flow, axis=0)
-                    self.t = np.append(self.t, t, axis=0)
-                print(n, len(t))
-        dats = [datetime.strptime(str(s, encoding='utf-8'), '%Y.%m.%d_%H:%M:%S') for s in self.t]
-        self.t_array = Time(dats, format='datetime', scale='tai').decimalyear
+            if ref_lat is None:
+                ref_lat, ref_lon = lat, lon
+            elif not (np.array_equal(lat, ref_lat) and np.array_equal(lon, ref_lon)):
+                raise ValueError(
+                    f'{file_path}: latitude/longitude grid does not match the '
+                    f'other files being concatenated — these look like output '
+                    f'from different LCT runs. Narrow `pattern` to select only '
+                    f'one run.')
+
+            t_chunks.append(t)
+            flow_chunks.append(flow)
+            print(file_path, len(t))
+
+        t_all = np.concatenate(t_chunks, axis=0)
+        flow_all = np.concatenate(flow_chunks, axis=0)
+
+        dats = [datetime.strptime(str(s, encoding='utf-8'), '%Y.%m.%d_%H:%M:%S') for s in t_all]
+        t_array = Time(dats, format='datetime', scale='tai').decimalyear
+
+        order = np.argsort(t_array)
+        self.t_array = t_array[order]
+        self.t = t_all[order]
+        self.flow_array = flow_all[order]
+        self.lat_og = ref_lat
+        self.lon_og = ref_lon
         self.nt, self.nlat, self.nlng = len(self.t_array), len(self.lat_og), len(self.lon_og)
         return self
 
@@ -128,15 +202,22 @@ class FlowData:
                 self.flow_array[:, i, j] -= fitted
         return self
 
-    def save(self):
+    def save(self, suffix=None):
         """
         Saves the processed flow array to a file.
         This method calls the utility function `save_flow_array` to save the flow array,
         which flow type, and which dataset.
+        Parameters:
+            suffix (str, optional): Output filename suffix distinguishing
+                this LCT run (e.g. '_granule', '_dt_1h'). Defaults to
+                `LEGACY_OUTPUT_SUFFIX[which_data]` for known legacy
+                datasets; required otherwise. Pass the same value you'd
+                use for `run_pipeline.py`'s `data` argument's suffix, so
+                inertial_mode_pipeline can find this output.
         Returns:
             self (FlowData): The instance of FlowData after saving the flow array.
         """
-        save_flow_array(self.flow_array, self.which_flow, self.which_data)
+        save_flow_array(self.flow_array, self.which_flow, self.which_data, suffix=suffix)
         return self
 
     def plot(self, n, which_plot):
