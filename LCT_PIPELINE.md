@@ -127,11 +127,12 @@ runs) but only consumed downstream if downsampling is on.
 | `clat_start`, `clat_stop`, `clat_step` | float | Latitude sampling grid [degrees], built via `np.arange(start, stop + 1e-9, step)` — the `+1e-9` guards against floating-point step accumulation excluding the endpoint. |
 | `clng_start`, `clng_stop`, `clng_step` | float | Same, for longitude. |
 
-`granulation.ini` uses a narrow ±10°/0.1° grid (201×201 = 40,401
-points) — fine spatial resolution near disk center for supergranulation
-studies. `magnetic.ini` uses a coarser ±60°/2.5° grid (49×49 = 2,401
-points) — wider disk coverage, coarser resolution, appropriate for
-larger-scale magnetic features.
+Both `granulation.ini` and `magnetic.ini` use the full-disk ±90°/2.5°
+grid (73×73 = 5,329 points) — this matches the 73-point global
+latitude/longitude grid `inertial_mode_pipeline` and `flow_processing`
+assume downstream (`inertial_mode_pipeline.config.LON_OG`/`LAT_OG`),
+so a run with either config produces flow maps at the spatial
+resolution those later stages actually expect.
 
 ### `[lct]`
 
@@ -601,9 +602,9 @@ bounds/validation logic is.
   (`main_chunk.py` does not have this problem — see
   [Execution modes](#execution-modes).)
 - **Chunk pipeline trades spatial parallelism for temporal.** A single
-  chunk task walks the *entire* patch grid serially — for
-  `granulation.ini`'s 40,401-point grid this may be significantly
-  slower per unit of work than the MPI pipeline's per-timestep
+  chunk task walks the *entire* patch grid serially — for either
+  config's 5,329-point (73×73) grid this may be significantly slower
+  per unit of work than the MPI pipeline's per-timestep
   gather/broadcast across many ranks. Worth timing before relying on
   it for a large grid.
 - **Range mode is single-year only.** `range_start`/`range_end`
