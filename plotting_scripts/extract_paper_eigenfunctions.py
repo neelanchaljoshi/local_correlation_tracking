@@ -58,8 +58,12 @@ OUT_DIR = HERE.parent / 'data' / 'for_edmond' / 'paper_eigenfunctions'
 LATS_LCT = np.linspace(-90, 90, 73)
 
 # (m, freq, mode, symmetry, lct_mag_file, lct_gran_file, rda_file) --
-# the four modes plotting_scripts/rda_comparison_lct.ipynb compares,
-# with the exact filenames it loads them from.
+# the modes plotting_scripts/rda_comparison_lct.ipynb compares, with
+# the exact filenames it loads them from. lct_gran_file/rda_file may
+# be None if that source has no matching file for this mode -- e.g.
+# m=3's -190.0 nHz high-latitude peak has no RDA counterpart (the only
+# RDA file for m=3 is centered around -260 nHz, a different peak) --
+# in which case that source is skipped for this mode.
 MODES = [
     (1, -88.0, 'highlat', 'anti',
      'eigenfunction_m1_-88.0_highlat_anti_hmi_m_720s_dt_1h.npz',
@@ -69,6 +73,10 @@ MODES = [
      'eigenfunction_m2_-73.0_critlat_anti_hmi_m_720s_dt_1h.npz',
      'eigenfunction_m2_-73.0_critlat_anti_hmi_ic_45s_granule.npz',
      'hmi_rda_05_new_300_2_+_[-83, -63]_2010_2025.npz'),
+    (3, -190.0, 'highlat', 'anti',
+     'eigenfunction_m3_-190.0_highlat_anti_hmi_m_720s_dt_1h.npz',
+     None,
+     None),
     (8, -115.0, 'rossby', 'anti',
      'eigenfunction_m8_-115.0_rossby_anti_hmi_m_720s_dt_1h.npz',
      'eigenfunction_m8_-115.0_rossby_anti_hmi_ic_45s_granule.npz',
@@ -290,15 +298,21 @@ def main() -> None:
         out = save_result('lctmag', m, freq, mode, symmetry, 'hmi_m_720s_dt_1h', result, lats)
         print(f'  lctmag  -> {out}')
 
-        uphi, uthe, lats = load_lct(lct_gran_file)
-        result = project_onto_legendre(uphi, uthe, lats, symmetryuphi=symmetry)
-        out = save_result('lctgran', m, freq, mode, symmetry, 'hmi_ic_45s_granule', result, lats)
-        print(f'  lctgran -> {out}')
+        if lct_gran_file is not None:
+            uphi, uthe, lats = load_lct(lct_gran_file)
+            result = project_onto_legendre(uphi, uthe, lats, symmetryuphi=symmetry)
+            out = save_result('lctgran', m, freq, mode, symmetry, 'hmi_ic_45s_granule', result, lats)
+            print(f'  lctgran -> {out}')
+        else:
+            print('  lctgran -> (no matching file for this mode, skipped)')
 
-        uphi, uthe, lat_rda = load_rda(rda_file)
-        result = project_onto_legendre(uphi, uthe, lat_rda, symmetryuphi=symmetry)
-        out = save_result('rda', m, freq, mode, symmetry, 'rda', result, lat_rda)
-        print(f'  rda     -> {out}')
+        if rda_file is not None:
+            uphi, uthe, lat_rda = load_rda(rda_file)
+            result = project_onto_legendre(uphi, uthe, lat_rda, symmetryuphi=symmetry)
+            out = save_result('rda', m, freq, mode, symmetry, 'rda', result, lat_rda)
+            print(f'  rda     -> {out}')
+        else:
+            print('  rda     -> (no matching file for this mode, skipped)')
 
     print(f'\nDone. Wrote lctmag/, lctgran/, rda/ under {OUT_DIR}')
 
